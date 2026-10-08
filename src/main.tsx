@@ -2,6 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ArrowLeft, ArrowRight, AudioLines, Check, Compass, Mic, RotateCcw, Volume2, VolumeX } from 'lucide-react';
 import './style.css';
+import {identifyStar,visibleStars,type VisibleStar} from './astronomy';
+import {identifySolarObject,solarSystemPositions,type SolarObject} from './ephemeris';
+import {loadYaleCatalog,identifyYale,yaleVisible,type YaleStar} from './yale';
 
 type Screen = 'welcome' | 'point' | 'discovery' | 'listen';
 type CelestialObject = { name: string; type: string; color: string; story: string };
@@ -16,6 +19,14 @@ type SpeechRecognitionLike = { lang: string; interimResults: boolean; onresult: 
 function App() {
   const [screen, setScreen] = useState<Screen>('welcome');
   const [index, setIndex] = useState(0);
+  const [position,setPosition]=useState<{latitude:number;longitude:number}|null>(null);
+  const [heading,setHeading]=useState<number|null>(null);
+  const [tilt,setTilt]=useState<number|null>(null);
+  const [star,setStar]=useState<VisibleStar|SolarObject|YaleStar|null>(null);
+  const [skyError,setSkyError]=useState('');
+  const [manual,setManual]=useState(false);
+  const [catalogCount,setCatalogCount]=useState(0);
+  const [catalogError,setCatalogError]=useState('');
   const [speaking, setSpeaking] = useState(false);
   const [muted, setMuted] = useState(false);
   const [question, setQuestion] = useState('');
@@ -23,7 +34,12 @@ function App() {
   const [notice, setNotice] = useState('');
   const recognition = useRef<SpeechRecognitionLike | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const obj = objects[index];
+  const obj = star || objects[index];
+  useEffect(()=>{loadYaleCatalog().then(setCatalogCount).catch(e=>setCatalogError(String(e instanceof Error?e.message:e)));},[]);
+  useEffect(()=>{if(screen!=='point')return;navigator.geolocation?.getCurrentPosition(p=>setPosition({latitude:p.coords.latitude,longitude:p.coords.longitude}),()=>setSkyError('Enable location access to identify stars.'),{enableHighAccuracy:true,timeout:12000});},[screen]);
+  useEffect(()=>{if(screen!=='point')return;const handler=(event:Event)=>{const e=event as DeviceOrientationEvent & {webkitCompassHeading?:number};if(typeof e.webkitCompassHeading==='number')setHeading(e.webkitCompassHeading);else if(e.absolute&&typeof e.alpha==='number')setHeading((360-e.alpha)%360);if(typeof e.beta==='number')setTilt(Math.max(0,Math.min(90,e.beta)));};window.addEventListener('deviceorientationabsolute',handler);window.addEventListener('deviceorientation',handler);return()=>{window.removeEventListener('deviceorientationabsolute',handler);window.removeEventListener('deviceorientation',handler);};},[screen]);
+  async function enableSensors(){const ctor=DeviceOrientationEvent as unknown as {requestPermission?:()=>Promise<string>};if(ctor.requestPermission){try{if(await ctor.requestPermission()!=='granted')setSkyError('Motion access denied.');}catch{setSkyError('Motion sensors unavailable.');}}}
+  function selectStar(selected:VisibleStar|SolarObject|YaleStar){stopAudio();setStar(selected);setResponse('');setScreen('discovery');timer.current=setTimeout(()=>narrate(selected.story),200);}
   function stopAudio() { if (timer.current) clearTimeout(timer.current); window.speechSynthesis?.cancel(); setSpeaking(false); }
   useEffect(() => () => { window.speechSynthesis?.cancel(); recognition.current?.stop(); }, []);
   function narrate(text: string) {
@@ -36,8 +52,10 @@ function App() {
     setSpeaking(true);
     window.speechSynthesis.speak(utterance);
   }
-  function discover() { stopAudio(); setResponse(''); setScreen('discovery'); timer.current = setTimeout(() => narrate(obj.story), 200); }
-  function pointElsewhere() { stopAudio(); setIndex(i => (i + 1) % objects.length); setScreen('point'); }
+  function discover(){if(!position||heading===null||tilt===null){setSkyError('Location and compass are required. Choose a star manually.');setManual(true);return;}const starMatch=catalogCount===9110?identifyYale(position.latitude,position.longitude,heading,tilt):identifyStar(position.latitude,position.longitude,heading,tilt);
+    const solarMatch=identifySolarObject(position.latitude,position.longitude,heading,tilt);
+    const match=!starMatch?solarMatch:!solarMatch?starMatch:(starMatch.separation??180)<=(solarMatch.separation??180)?starMatch:solarMatch;if(!match){setSkyError('No bright star within 15° of the estimated pointing direction.');setManual(true);return;}selectStar(match);}
+  function pointElsewhere() { stopAudio();setStar(null);setManual(false);setIndex(i => (i + 1) % objects.length); setScreen('point'); }
   function listen() {
     stopAudio(); setQuestion(''); setNotice(''); setScreen('listen');
     const Constructor = Recognition();
@@ -71,8 +89,15 @@ function App() {
       <p>Point the top of your phone toward the sky.</p>
       <div className="sky aim"><div className="ring outer"/><div className="ring inner"/><div className="cross">+</div><span>ALIGN WITH THE SKY</span></div>
       <p className="hint">Hold steady, then tap Done.</p>
+      <p className="hint" role="status">{position?"Location ready":"Location pending"} · {heading===null?"Compass pending":Math.round(heading)+"° heading"} · {tilt===null?"Tilt pending":Math.round(tilt)+"° tilt"}</p>
+      <button className="secondary" onClick={enableSensors}>Enable motion sensors</button>
+      <p className="hint">{catalogCount===9110?"Yale catalogue ready · 9,110 records":"Bright-star fallback active"}</p>
+      {catalogError&&<p className="notice" role="status">{catalogError}</p>}
+      {skyError&&<p className="notice" role="status">{skyError}</p>}
+      <button className="replay" onClick={()=>setManual(!manual)}>Choose a star manually</button>
+      {manual&&<div className="manual">{position?[...(catalogCount===9110?yaleVisible(position.latitude,position.longitude).slice(0,30):visibleStars(position.latitude,position.longitude).slice(0,12)),...solarSystemPositions(position.latitude,position.longitude)].map(candidate=><button key={candidate.name} className="star-option" onClick={()=>selectStar(candidate)}>{candidate.name} · {Math.round(candidate.altitude)}° high</button>):<p>Allow location to list visible stars.</p>}</div>}
       <button className="primary" onClick={discover}>Done <Check size={20}/></button>
-      <small>Demo mode · Sample objects rotate after each discovery</small>
+      <small>Experimental pointing · Yale stars, planets and Moon</small>
     </section>}
     {screen === 'discovery' && <section className="screen discovery">
       <span className="eyebrow">YOU'VE DISCOVERED</span><h1>{obj.name}</h1><p>{obj.type}</p>
