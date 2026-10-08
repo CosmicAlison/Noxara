@@ -37,6 +37,6 @@ export async function askGemma(name:string,type:string,facts:string,question?:st
   const prompt='You are Noxara, a warm, concise astronomy storyteller. Speak naturally in 2-4 short sentences. Only assert facts supported by the supplied verified object data; never invent distances, dates, mythology or physical properties. If asked for unknown details, say you cannot verify them. Object: '+name+'. Classification: '+type+'. Verified context: '+facts+'. '+(question?'User asks: '+question:'Introduce this object poetically.');
   const result=await generator([{role:'user',content:prompt}],{max_new_tokens:130,do_sample:false});
   const messages=result?.[0]?.generated_text;
-  const answer=Array.isArray(messages)?messages.at(-1)?.content:String(messages??'');
+  const answer=Array.isArray(messages)?messages[messages.length - 1]?.content:String(messages??'');
   return typeof answer==='string'&&answer.trim()?answer.trim():facts;
 }
