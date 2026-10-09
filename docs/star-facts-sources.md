@@ -6,8 +6,7 @@ The application source catalogue `public/bsc5.json` is unchanged. `public/star-f
 
 - **Primary HR keyspace:** Noxara's existing `public/bsc5.json`, based on the Yale Bright Star Catalogue, Fifth Revised Edition (Hoffleit & Warren). Catalogue documentation: https://cdsarc.cds.unistra.fr/viz-bin/ReadMe/V/50
 - **Supplemental labels and approximate temperatures:** Bretton Wade's Yale Bright Star Catalog JSON conversion, `bsc5-short.json`: https://github.com/brettonw/YaleBrightStarCatalog (repository MIT license; consult underlying astronomical catalogue attribution). Joined **only by exact HR identifier**, not coordinates.
-- **HYG v4.1 reference:** https://github.com/astronexus/HYG-Database/tree/main/hyg/CURRENT . HYG is CC BY-SA 4.0. **HYG measurements are not imported in this version** because the 32 MB CSV could not be read through the available GitHub connector. No HYG-derived claims or licensing assumptions are made.
-
+- **HYG v4.1:** https://github.com/astronexus/HYG-Database/blob/main/hyg/CURRENT/hygdata_v41.csv (CC BY-SA 4.0). Exact HR joins, parsec distances converted to light-years; missing or sentinel distances excluded. 12 duplicate HR rows resolved by preferring records with available distance and spectral type. HYG's catalogue attribution and share-alike requirements apply to distributed derivatives.\n- **Yale V/50 fixed-width catalogue:** https://github.com/lsst/all_sky_phot/blob/main/python/lsst/all_sky_phot/bsc5.dat (original Hoffleit & Warren data, 9,110 records). Spectral types and HD IDs read from documented fixed-width fields; positive non-dynamical Yale parallax used only when HYG match unavailable.\n- **NASA Science:** curated, per-object `notableFacts` carry a direct `sourceUrl` to the NASA article supporting each fact.\n
 ## Data semantics
 
 - `properName`: label in the supplemental source; names are not individually revalidated against the IAU list.
@@ -15,27 +14,8 @@ The application source catalogue `public/bsc5.json` is unchanged. `public/star-f
 - `bayerDesignation`: Greek-letter designation without constellation suffix; combine with `constellation` when available.
 - `flamsteedNumber`: numeric Flamsteed designation, requiring constellation to form the full name.
 - `temperatureK`: **approximate**, computed in the supplemental conversion from B–V or spectral class; not a directly measured temperature.
-- `spectralType`, `distanceLy`: null until reliable per-HR measurements are imported. Do not invent these values.
-- `notableFacts`: empty array until individually sourced notable facts are available. Do not present generated prose as verified history.
+- `spectralType`: Yale V/50 classification, falling back to HYG when unavailable. `distanceLy`: HYG v4.1 parallax-based distance in light-years, falling back to positive non-dynamical Yale parallax. Unknown values remain null.
+- `notableFacts`: array of `{text,sourceUrl}` for individually source-verified NASA observing facts, otherwise empty. Do not present generated prose as verified history.
 - `sourceIds`: source identifiers for populated supplemental fields; empty for records missing in the supplemental conversion.
 
-## Coverage and validation
-
-- Original HR entries: **9,110**
-- Records in `star-facts.json`: **9,110**, one per original HR entry
-- Exact HR matches in supplemental source: **9,096**
-- Unmatched records (retained with null fields): **14**
-- Proper-name labels: **339**
-- Constellation abbreviations: **3,143**
-- Bayer designations: **1,564**
-- Flamsteed numbers: **2,554**
-- Approximate temperature values: **9,095**
-- Spectral types: **0** (not yet imported)
-- Distances: **0** (not yet imported)
-- Curated notable facts: **0** (not yet imported)
-
-These figures describe a **partial first-pass enrichment**, not the complete requested HYG cross-match. The original catalogue's 9,110-record coverage is preserved, but not all metadata categories have been filled. Missing data is intentionally null.
-
-## Next enrichment pass
-
-Import HYG v4.1 using the `hr` column and reject dubious distances (HYG documents `dist >= 100000` parsecs as missing or dubious). Prefer authoritative Yale V/50 `SpType` for spectral classification; document source priority, conflicts and provenance. Convert parsecs to light-years using 3.26156 ly/pc. Include verified notes only with per-object references. Respect HYG's CC BY-SA 4.0 requirements when distributing HYG-derived material.
+## Coverage and validation\n\n- Original HR records: **9,110**; enriched JSON keys: **9,110** (exact HR-keyed coverage)\n- Yale V/50 fixed-width entries matched: **9,110**\n- HYG v4.1 records matched: **9,029** (12 duplicate-HR HYG rows resolved by quality)\n- Proper names: **407**; constellation abbreviations: **9,074**\n- Bayer designations: **1,564**; Flamsteed numbers: **2,554**\n- Approximate temperatures: **9,095**\n- Spectral classifications: **9,096**\n- Distances: **8,838**\n- Non-stellar catalogue entries: **14**, with spectral/temperature/distance fields cleared\n- Source-linked curated facts: **24**, across **21** matched catalogue records; all other `notableFacts` arrays remain empty\n\n## Caveats\n\nHYG distances are catalogue estimates derived from parallax and should not be presented as perfectly precise measurements. `distanceLy` is rounded to two decimals for storage, not an accuracy claim. Where the HYG distance is absent, positive non-dynamical Yale parallaxes may provide a fallback. Proper-name labels are source-provided and are not individually reverified as current IAU-approved names. The 14 non-stellar catalogue entries are kept for HR-key coverage; Noxara should avoid describing them as single stars. NASA-sourced facts are selectively curated, not automatically fabricated for all 9,110 records.\n\n## Runtime\n\nThis PR is **data only**; existing star identification and Gemma prompts are not yet wired to consume the enrichment JSON.\n
