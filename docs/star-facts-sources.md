@@ -32,7 +32,7 @@ The application source catalogue `public/bsc5.json` is unchanged. `public/star-f
 - Spectral classifications: **9,096**
 - Distances: **8,838**
 - Non-stellar catalogue entries: **14**, with spectral/temperature/distance fields cleared
-- Source-linked curated facts: **24**, across **21** matched catalogue records; all other `notableFacts` arrays remain empty
+- Source-linked curated facts: **25**, across **22** matched catalogue records; all other `notableFacts` arrays remain empty
 
 ## Caveats
 
@@ -50,3 +50,24 @@ Gemma, Kokoro and enrichment parsing run in a dedicated module worker. Discovery
 Only one inference operation runs at a time. Cancelling terminates the worker, so the next request reinitializes models using browser-cached resources where available. Generation has a 90-second deadline and speech synthesis a 60-second deadline; either timeout terminates the worker. The latest audio blob is reused for replay. Autoplay rejection asks the user to tap replay. Replies are capped at 96 new tokens and requested in two short sentences.
 
 This prevents synchronous model work from blocking UI rendering, but does not reduce the FP32 CPU model's memory requirements or guarantee acceptable speed on every phone. WebGPU/CPU precision selection is unchanged. Setup now also warms and checks the Kokoro voice before entering the sky view.
+
+HR 5968 has no proper-name label in the source but has the Bayer designation Rho Coronae Borealis (rho CrB). The display prefers proper name, Bayer designation, Flamsteed designation, then HR. Its NASA-linked exoplanet discovery history was added to the catalogue; no proper name or measurement was invented. The existing text panel distinguishes sourced history from the generated narrative, and a deterministic catalogue summary remains readable when generation fails.
+
+
+## Full catalogue name and fact audit
+
+Every one of the 9,110 records now has a non-empty `name`, `nameType`, `nameSourceUrls` and `funFact`. A `name` is a display label, **not a claim that every star has a proper name**. Selection is proper name, expanded Bayer designation, expanded Flamsteed designation, historical label for retained non-stellar entries, HD designation, then HR. The original nullable `properName` is preserved.
+
+Online sources fetched for this pass:
+- Yale V/50 catalogue: https://cdsarc.cds.unistra.fr/ftp/V/50/catalog.gz
+- Yale V/50 object-specific remarks: https://cdsarc.cds.unistra.fr/ftp/V/50/notes.gz
+- Field definitions: https://cdsarc.cds.unistra.fr/ftp/V/50/ReadMe
+- Constellation nominative/genitive names: https://github.com/brettonw/YaleBrightStarCatalog/blob/master/constellationNames.txt (MIT conversion project; the obvious source typo “Pices” is corrected to “Pisces”, and the Serpens footnote marker is removed).
+
+`funFact.kind` distinguishes 22 existing source-linked summaries, 4,454 historical catalogue notes, and 4,634 catalogue-based explanations. The last group is explicitly `generated: true`: deterministic prose based on published measurements, not independently documented history. Historical excerpts preserve uncertainty and negation, and are labelled as notes from the 1991 catalogue rather than current discoveries. Some use technical catalogue abbreviations; they are not silently reinterpreted. Only one selected note is included per record to control download size.
+
+The derived explanations use proper-motion components (including the catalogue's cos(dec) convention), signed heliocentric radial velocity, estimated light travel time, or apparent magnitude. Light-travel estimates inherit distance uncertainty; proper motion is not full space velocity. No age, mythology, discovery story, physical companion relationship, or proper name is invented to fill gaps.
+
+Reproduction: decompress the two CDS gzip files into `catalog.txt` and `notes.txt`, save the linked constellation table as `constellations.txt`, then run `python scripts/enrich-star-names.py /path/to/source-directory`. The script uses the existing enrichment's source-provided names, distances and individually curated facts. Source SHA-256 hashes and exact coverage are in `docs/star-facts-coverage.json`. Every join is by exact HR identifier; `public/bsc5.json` remains unchanged.
+
+The existing narrative panel is scrollable and displays the source-linked fact after the narrative. There is no additional facts panel. The title uses the display name and retains the HR identifier underneath. Catalogue text is available if local inference times out; this does not assert that the device's inference performance is fixed.

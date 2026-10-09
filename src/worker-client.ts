@@ -26,7 +26,7 @@ export class ModelWorkerClient {
     }
     return new Promise<T>((resolve,reject)=>{
       const id=++this.sequence;
-      const timer=setTimeout(()=>this.reset(new Error('The local guide took too long on this device. Please retry.')),timeoutMs);
+      const timer=setTimeout(()=>this.reset(new Error(task==='voice'?'Voice generation exceeded 60 seconds on this device. The text is still available.':task==='ask'?'Story generation exceeded 90 seconds on this device.':'Guide setup timed out. Please retry.')),timeoutMs);
       this.pending={id,resolve:resolve as (value:unknown)=>void,reject,timer,progress};
       try{this.worker!.postMessage({id,task,payload});}catch(error){this.reset(error instanceof Error?error:new Error(String(error)));}
     });

@@ -1,3 +1,5 @@
+import {getStarFacts,type StarFacts} from './star-facts';
+import {starDisplayName,catalogueSummary} from './star-display';
 import { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ArrowLeft, ArrowRight, AudioLines, Check, Compass, Mic, RotateCcw, Volume2, VolumeX } from 'lucide-react';
@@ -23,6 +25,7 @@ function App() {
   const [position,setPosition]=useState<{latitude:number;longitude:number}|null>(null);
   const [heading,setHeading]=useState<number|null>(null);
   const [tilt,setTilt]=useState<number|null>(null);
+  const [displayFacts,setDisplayFacts]=useState<StarFacts|null>(null);
   const [star,setStar]=useState<VisibleStar|SolarObject|YaleStar|null>(null);
   const [skyError,setSkyError]=useState('');
   const [sensorPermission,setSensorPermission]=useState<'unknown'|'granted'|'denied'>('unknown');
@@ -41,11 +44,10 @@ function App() {
   const generating = useRef(false);
   const speechRequest = useRef(0);
   const [loadingMessage,setLoadingMessage]=useState('Writing your story…');
-  const [loadingError,setLoadingError]=useState('');
   const [loadingSeconds,setLoadingSeconds]=useState(0);
   const [voiceLoading,setVoiceLoading]=useState(false);
-  const lastRequest=useRef<{object:VisibleStar|SolarObject|YaleStar|CelestialObject;question?:string}|null>(null);
   const obj = star || objects[index];
+  const displayName=starDisplayName(obj,displayFacts);
   useEffect(()=>{loadYaleCatalog().then(setCatalogCount).catch(e=>setCatalogError(String(e instanceof Error?e.message:e)));},[]);
   useEffect(()=>{if(screen!=='point')return;navigator.geolocation?.getCurrentPosition(p=>setPosition({latitude:p.coords.latitude,longitude:p.coords.longitude}),()=>setSkyError('Enable location access to identify stars.'),{enableHighAccuracy:true,timeout:12000});},[screen]);
   useEffect(()=>{if(screen!=='point')return;const handler=(event:Event)=>{const e=event as DeviceOrientationEvent & {webkitCompassHeading?:number};if(typeof e.webkitCompassHeading==='number')setHeading(e.webkitCompassHeading);else if(e.absolute&&typeof e.alpha==='number')setHeading((360-e.alpha)%360);if(typeof e.beta==='number')setTilt(Math.max(0,Math.min(90,e.beta)));};window.addEventListener('deviceorientationabsolute',handler);window.addEventListener('deviceorientation',handler);return()=>{window.removeEventListener('deviceorientationabsolute',handler);window.removeEventListener('deviceorientation',handler);};},[screen]);
@@ -55,15 +57,18 @@ function App() {
     if(generating.current)return;
     generating.current=true;
     const request=++generation.current;
-    lastRequest.current={object:selected,question:q};
-    stopAudio();setNotice('');setLoadingError('');setLoadingSeconds(0);
+    stopAudio();setNotice('');setLoadingSeconds(0);
     setLoadingMessage(q?'Thinking about your question…':'Writing your story…');
     setScreen('loading');
     const progress=(message:string)=>{if(request===generation.current)setLoadingMessage(message);};
+    let fallback=selected.story;
     try{
+      const facts='hr' in selected?await getStarFacts(selected.hr).catch(()=>null):null;
+      if(request!==generation.current)return;
+      setDisplayFacts(facts);fallback=catalogueSummary(selected,facts);
       if(!isEdgeReady())await installEdge(progress);
       if(request!==generation.current)return;
-      const story=await askGemma(selected,q,progress);
+      const story=await askGemma({...selected,name:starDisplayName(selected,facts)},q,progress);
       if(request!==generation.current)return;
       let voiceReady=false;
       if(!muted){
@@ -75,23 +80,27 @@ function App() {
       setResponse(story);setScreen('discovery');
       if(voiceReady)void narrate(story);
     }catch(error){
-      if(request===generation.current)setLoadingError(error instanceof Error?error.message:String(error));
+      if(request===generation.current){
+        setResponse(q?'I could not generate an answer to that question. The catalogue details are available below.':fallback);
+        setNotice('AI narration unavailable: '+(error instanceof Error?error.message:String(error))+' Showing catalogue details.');
+        setScreen('discovery');
+      }
     }finally{if(request===generation.current)generating.current=false;}
   }
   function selectStar(selected:VisibleStar|SolarObject|YaleStar){
     if(generating.current)return;
-    setStar(selected);setResponse('');void generateNarrative(selected);
+    setStar(selected);setDisplayFacts(null);setResponse('');void generateNarrative(selected);
   }
   function cancelGeneration(){
     generation.current++;generating.current=false;cancelEdgeGeneration();stopAudio();
-    setLoadingError('');setScreen(response?'discovery':'point');
+    setScreen(response?'discovery':'point');
   }
   function stopAudio(){speechRequest.current++;if(voiceLoading)cancelEdgeGeneration();stopEdgeSpeech();setSpeaking(false);setVoiceLoading(false);}
   useEffect(()=>{
-    if(screen!=='loading'||loadingError)return;
+    if(screen!=='loading')return;
     const clock=setInterval(()=>setLoadingSeconds(seconds=>seconds+1),1000);
     return()=>clearInterval(clock);
-  },[screen,loadingError]);
+  },[screen]);
   useEffect(()=>()=>{generation.current++;cancelEdgeGeneration();recognition.current?.stop();},[]);
   async function narrate(text:string){
     if(muted||!text)return;
@@ -149,21 +158,21 @@ function App() {
       {skyError&&<p className="notice" role="status">{skyError}</p>}
       <button className="primary" onClick={discover}>Done <Check size={20}/></button>
     </section>}
-    {screen === 'loading' && <section className="screen loading-screen" aria-busy={!loadingError}>
+    {screen === 'loading' && <section className="screen loading-screen" aria-busy="true">
       <span className="eyebrow">A STORY IS TAKING SHAPE</span>
       <h1>A moment <em>with the stars.</em></h1>
-      {!loadingError&&<><div className="story-loader" aria-hidden="true"/><p className="hint" role="status">{loadingMessage}</p><p className="hint">{loadingSeconds < 15 ? 'Your guide is preparing this discovery.' : 'This device is taking a little longer. You can cancel at any time.'}</p></>}
-      {loadingError&&<><p className="notice" role="alert">{loadingError}</p><button className="primary" onClick={()=>{const request=lastRequest.current;if(request)void generateNarrative(request.object,request.question);}}>Try again <RotateCcw size={18}/></button></>}
-      <button className="secondary" onClick={cancelGeneration}>{loadingError?'Go back':'Cancel'}</button>
+      <div className="story-loader" aria-hidden="true"/><p className="hint" role="status">{loadingMessage}</p>
+      <p className="hint">{loadingSeconds < 15 ? 'Your guide is preparing this discovery.' : 'This device is taking a little longer. You can cancel at any time.'}</p>
+      <button className="secondary" onClick={cancelGeneration}>Cancel</button>
     </section>}
     {screen === 'discovery' && <section className="screen discovery">
-      <span className="eyebrow">YOU'VE DISCOVERED</span><h1>{obj.name}</h1><p>{obj.type}</p>
+      <span className="eyebrow">YOU'VE DISCOVERED</span><h1>{displayName}</h1><p>{obj.type}{star&&'hr' in star?' · HR '+star.hr:''}</p>
       <div className="sky object"><div className="celestial" style={{ background: obj.color, boxShadow: '0 0 38px 16px ' + obj.color + '55, 0 0 100px 55px ' + obj.color + '22' }}/></div>
       <div className="narration">
         <div className="narration-heading"><AudioLines size={20}/><span>{voiceLoading ? 'Preparing narration…' : speaking ? 'Noxara is speaking…' : 'A story from the sky'}</span>
           <button className="icon-button" aria-label={muted ? 'Unmute narration' : 'Mute narration'} onClick={() => { stopAudio(); setMuted(m => !m); }}>{muted ? <VolumeX size={19}/> : <Volume2 size={19}/>}</button>
         </div>
-        <p>{response}</p>
+        <div className="narrative-text" tabIndex={0} role="region" aria-label="Narrative"><p>{response}</p>{displayFacts?.funFact&&<p className="catalogue-fact">{displayFacts.funFact.text} <a href={displayFacts.funFact.sourceUrls[0]} target="_blank" rel="noreferrer">Source</a></p>}</div>
         {notice&&<p className="notice" role="status">{notice}</p>}
         <button className="replay" disabled={voiceLoading} onClick={() => narrate(response)}><RotateCcw size={15}/> Hear it again</button>
       </div>
@@ -171,7 +180,7 @@ function App() {
     </section>}
     {screen === 'listen' && <section className="screen listen">
       <button className="back" onClick={cancelQuestion}><ArrowLeft size={17}/> Back</button>
-      <span className="eyebrow">ASK ABOUT {obj.name.toUpperCase()}</span><h1>What makes you <em>curious?</em></h1>
+      <span className="eyebrow">ASK ABOUT {displayName.toUpperCase()}</span><h1>What makes you <em>curious?</em></h1>
       <div className="listening-art"><div className="pulse a"/><div className="pulse b"/><div className="mic"><Mic size={36}/></div></div>
       <p className="hint">Speak naturally, or type your question.</p>
       <textarea aria-label="Your question" placeholder={'What would you like to know about ' + obj.name + '?'} value={question} onChange={e => setQuestion(e.target.value)} rows={3}/>

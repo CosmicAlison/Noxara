@@ -1,4 +1,8 @@
 export type StarFacts = {
+  name?: string;
+  nameType?: string;
+  constellationName?: string | null;
+  funFact?: {text:string;kind:string;generated:boolean;sourceUrls:string[]};
   properName: string | null;
   constellation: string | null;
   bayerDesignation: string | null;
@@ -50,6 +54,8 @@ export function objectContext(object: GuideObject, facts: StarFacts | null): str
   if (Number.isFinite(object.magnitude)) lines.push('Apparent visual magnitude: ' + object.magnitude + '.');
   if (!facts) return lines.concat('Supplemental data unavailable. No other star-specific details are verified.').join('\n');
   lines.push('Catalogue object kind: ' + facts.objectKind + '.');
+  if (facts.name) lines.push('Display name or catalogue designation: ' + facts.name + '.');
+  if (facts.funFact) lines.push((facts.funFact.generated ? 'Catalogue-based explanation (not documented history): ' : 'Sourced catalogue fact (preserve any historical date and qualifications): ') + facts.funFact.text);
   if (facts.properName) lines.push('Catalogue name: ' + facts.properName + '.');
   if (facts.constellation) lines.push('Constellation abbreviation: ' + facts.constellation + '.');
   if (facts.bayerDesignation && facts.constellation) lines.push('Bayer designation: ' + facts.bayerDesignation + ' ' + facts.constellation + '.');
