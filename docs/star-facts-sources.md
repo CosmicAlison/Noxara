@@ -42,3 +42,11 @@ HYG distances are catalogue estimates derived from parallax and should not be pr
 
 Gemma loads `star-facts.json` on the first star narration or question and reuses the parsed catalogue for the session. Yale and fallback bright-star objects carry an HR identifier; introductions and follow-up questions use only that exact record. Distances and derived temperatures are explicitly labelled estimates. Missing enrichment falls back to HR and apparent magnitude, without passing the old unsourced story as verified context. Failed downloads can be retried on the next request. Solar-system objects retain their existing ephemeris context. The JSON remains a separate public asset; persistent offline availability depends on browser HTTP caching.
 
+
+### Narrative loading and responsiveness
+
+Gemma, Kokoro and enrichment parsing run in a dedicated module worker. Discovery and question flows show a loading screen until a generated narrative and (unless muted) its audio are prepared. If voice generation fails, the generated text is still shown with an audio error. Narrative failures offer retry without showing a canned story as the generated result.
+
+Only one inference operation runs at a time. Cancelling terminates the worker, so the next request reinitializes models using browser-cached resources where available. Generation has a 90-second deadline and speech synthesis a 60-second deadline; either timeout terminates the worker. The latest audio blob is reused for replay. Autoplay rejection asks the user to tap replay. Replies are capped at 96 new tokens and requested in two short sentences.
+
+This prevents synchronous model work from blocking UI rendering, but does not reduce the FP32 CPU model's memory requirements or guarantee acceptable speed on every phone. WebGPU/CPU precision selection is unchanged. Setup now also warms and checks the Kokoro voice before entering the sky view.

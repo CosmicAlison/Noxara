@@ -1,64 +1,48 @@
-import {getStarFacts, objectContext, gemmaPrompt, type GuideObject} from './star-facts';
-// Browser-only inference. Models are downloaded on demand and cached by the browser.
+import type {GuideObject} from './star-facts';
+import {ModelWorkerClient} from './worker-client';
 export type SetupProgress = (message:string)=>void;
-function reportDownload(progress:SetupProgress,model:string,event:any){
-  if(event.status==='progress' && typeof event.progress==='number')progress(model+' download: '+Math.round(event.progress)+'%'+(event.file?' — '+event.file:''));
-  else if(event.status==='initiate')progress(model+': fetching '+(event.file||'model resources'));
-  else if(event.status==='done')progress(model+': cached '+(event.file||'model resource'));
-}
-const KOKORO='onnx-community/Kokoro-82M-v1.0-ONNX';
-const GEMMA='onnx-community/gemma-3-270m-it-ONNX';
-let tts: any;
-let generator: any;
-let audio: HTMLAudioElement|null=null;
-let audioUrl: string|null=null;
-export function supportsEdge(){return typeof WebAssembly!=='undefined';}
-async function hasWebGPU(){try{const gpu=(navigator as Navigator & {gpu?:{requestAdapter:()=>Promise<unknown>}}).gpu;return Boolean(gpu && await gpu.requestAdapter());}catch{return false;}}
+const client=new ModelWorkerClient(()=>new Worker(new URL('./edge.worker.ts',import.meta.url),{type:'module'}));
+let audio:HTMLAudioElement|null=null;
+let audioUrl:string|null=null;
+let speechVersion=0;
+// Keep only the last narration: replay should not run Kokoro again.
+let cachedVoice:{text:string;blob:Blob}|null=null;
+export function supportsEdge(){return typeof WebAssembly!=='undefined'&&typeof Worker!=='undefined';}
+export function isEdgeReady(){return client.ready;}
 export async function installEdge(progress:SetupProgress){
-  if(!supportsEdge())throw new Error('WebAssembly is unavailable in this browser.');
-  progress('Step 1 of 2 — downloading Kokoro voice. Keep this page open…');
-  const {KokoroTTS}=await import('kokoro-js');
-  tts=await KokoroTTS.from_pretrained(KOKORO,{device:'wasm',dtype:'q8',progress_callback:(event:any)=>reportDownload(progress,'Kokoro',event)});
-  progress('Kokoro installed. Step 2 of 2 — preparing Gemma…');
-  const gpuAvailable=await hasWebGPU();
-  const backend=gpuAvailable?'webgpu':'wasm';
-  const precision=gpuAvailable?'q4f16':'fp32';
-  progress('Gemma: using '+(gpuAvailable?'WebGPU':'CPU / WebAssembly')+' ('+precision+'). Downloading model files…');
-  try{
-    const {pipeline}=await import('@huggingface/transformers');
-    generator=await pipeline('text-generation',GEMMA,{
-      device:backend,dtype:precision,
-      progress_callback:(event:any)=>reportDownload(progress,'Gemma',event)
-    });
-    progress('Gemma downloaded. Testing local '+(gpuAvailable?'GPU':'CPU')+' inference…');
-    const test=await generator([{role:'user',content:'Say ready.'}],{max_new_tokens:4,do_sample:false});
-    if(!test?.length)throw new Error('Gemma returned no test output.');
-    progress('Kokoro and Gemma both ready. Entering Noxara…');
-  }catch(error){
-    generator=null;
-    throw new Error('Gemma '+backend+' setup failed: '+String(error)+'. Kokoro is cached; retry setup or use a more capable device.');
+  if(!supportsEdge())throw new Error('This browser cannot run the local guide.');
+  if(client.ready)return;
+  try{await client.request('install',null,15*60*1000,progress);client.ready=true;}
+  catch(error){client.reset();throw error;}
+}
+export function stopEdgeSpeech(){
+  speechVersion++;
+  if(audio){audio.pause();audio.src='';audio=null;}
+  if(audioUrl){URL.revokeObjectURL(audioUrl);audioUrl=null;}
+}
+export function cancelEdgeGeneration(){stopEdgeSpeech();client.reset();}
+export async function prepareEdgeSpeech(text:string):Promise<void>{
+  if(cachedVoice?.text===text)return;
+  const blob=await client.request<Blob>('voice',{text},60000);
+  cachedVoice={text,blob};
+}
+export async function speakEdge(text:string,onDone:()=>void){
+  stopEdgeSpeech();
+  const version=speechVersion;
+  await prepareEdgeSpeech(text);
+  if(version!==speechVersion)return; // Mute/navigation must suppress late audio.
+  audioUrl=URL.createObjectURL(cachedVoice!.blob);
+  const player=new Audio(audioUrl);audio=player;
+  player.onended=()=>{if(version===speechVersion){stopEdgeSpeech();onDone();}};
+  player.onerror=()=>{if(version===speechVersion){stopEdgeSpeech();onDone();}};
+  try{await player.play();}catch(error){
+    if(version!==speechVersion)return;
+    stopEdgeSpeech();
+    if(error instanceof DOMException&&error.name==='NotAllowedError')throw new Error('Tap Hear it again to play the narration. Your browser blocked automatic playback.');
+    throw error;
   }
 }
-export function isEdgeReady(){return Boolean(tts&&generator);}
-export function stopEdgeSpeech(){if(audio){audio.pause();audio.src='';audio=null;}if(audioUrl){URL.revokeObjectURL(audioUrl);audioUrl=null;}}
-export async function speakEdge(text:string,onDone:()=>void){
-  if(!tts)throw new Error('Noxara voice is not installed.');
-  stopEdgeSpeech();
-  const output=await tts.generate(text,{voice:'af_heart'});
-  const blob=output.toBlob();
-  audioUrl=URL.createObjectURL(blob);
-  audio=new Audio(audioUrl);
-  audio.onended=onDone;
-  audio.onerror=onDone;
-  await audio.play();
-}
-export async function askGemma(object:GuideObject,question?:string){
-  if(!generator)throw new Error('Gemma is not installed.');
-  // Enrichment failure must not prevent narration from the base catalogue.
-  const enrichment=object.hr===undefined?null:await getStarFacts(object.hr).catch(()=>null);
-  const context=objectContext(object,enrichment);
-  const result=await generator([{role:'user',content:gemmaPrompt(object,context,question)}],{max_new_tokens:180,do_sample:false});
-  const messages=result?.[0]?.generated_text;
-  const answer=Array.isArray(messages)?messages[messages.length - 1]?.content:String(messages??'');
-  return typeof answer==='string'&&answer.trim()?answer.trim():object.story;
+export async function askGemma(object:GuideObject,question?:string,progress?:SetupProgress):Promise<string>{
+  if(!client.ready)throw new Error('The guide is not ready. Please retry setup.');
+  return client.request<string>('ask',{object,question},90000,progress);
 }
