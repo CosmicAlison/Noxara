@@ -18,25 +18,24 @@ export async function installEdge(progress:SetupProgress){
   progress('Step 1 of 2 — downloading Kokoro voice. Keep this page open…');
   const {KokoroTTS}=await import('kokoro-js');
   tts=await KokoroTTS.from_pretrained(KOKORO,{device:'wasm',dtype:'q8',progress_callback:(event:any)=>reportDownload(progress,'Kokoro',event)});
-  progress('Kokoro installed and initialized. Step 2 of 2 — checking Gemma compatibility…');
+  progress('Kokoro installed. Step 2 of 2 — preparing Gemma…');
   const gpuAvailable=await hasWebGPU();
-  if(!gpuAvailable){
-    generator=null;
-    throw new Error('Kokoro is ready, but Gemma cannot initialize: this browser has no usable WebGPU adapter. Installation is incomplete; Noxara will remain on setup. Please try a browser/device with supported WebGPU.');
-  }
-  progress('Step 2 of 2 — downloading Gemma…');
+  const backend=gpuAvailable?'webgpu':'wasm';
+  const precision=gpuAvailable?'q4f16':'fp32';
+  progress('Gemma: using '+(gpuAvailable?'WebGPU':'CPU / WebAssembly')+' ('+precision+'). Downloading model files…');
   try{
     const {pipeline}=await import('@huggingface/transformers');
     generator=await pipeline('text-generation',GEMMA,{
-      device:'webgpu',dtype:'q4f16',
+      device:backend,dtype:precision,
       progress_callback:(event:any)=>reportDownload(progress,'Gemma',event)
     });
-    progress('Gemma downloaded. Initializing and testing inference…');
-    await generator([{role:'user',content:'Say ready.'}],{max_new_tokens:8,do_sample:false});
-    progress('Both models ready. Entering Noxara…');
+    progress('Gemma downloaded. Testing local '+(gpuAvailable?'GPU':'CPU')+' inference…');
+    const test=await generator([{role:'user',content:'Say ready.'}],{max_new_tokens:4,do_sample:false});
+    if(!test?.length)throw new Error('Gemma returned no test output.');
+    progress('Kokoro and Gemma both ready. Entering Noxara…');
   }catch(error){
     generator=null;
-    throw new Error('Gemma installation or initialization failed: '+String(error));
+    throw new Error('Gemma '+backend+' setup failed: '+String(error)+'. Kokoro is cached; retry setup or use a more capable device.');
   }
 }
 export function isEdgeReady(){return Boolean(tts&&generator);}
