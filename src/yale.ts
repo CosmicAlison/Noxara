@@ -1,7 +1,7 @@
 import { horizontalCoordinates, angularDistance, stars } from './astronomy';
 
 export type YaleStar = {
-  name:string; type:string; color:string; ra:number; dec:number; magnitude:number;
+  hr:number; name:string; type:string; color:string; ra:number; dec:number; magnitude:number;
   altitude:number; azimuth:number; separation?:number; story:string;
 };
 type Row = [number,number,number,number];
@@ -32,11 +32,13 @@ export function yaleVisible(latitude:number,longitude:number,at=new Date(),limit
   if(!catalog)return [];
   const visible:YaleStar[]=[];
   for(const [id,ra,dec,magnitude] of catalog){
-    if(magnitude>limitMagnitude)continue;
+    // The 14 non-stellar BSC placeholders have no sky position.
+    if((ra===0&&dec===0&&magnitude===0)||magnitude>limitMagnitude)continue;
     const {altitude,azimuth}=horizontalCoordinates(ra,dec,latitude,longitude,at);
     if(altitude<=5)continue;
     const known=knownStar(ra,dec);
     visible.push({
+      hr:id,
       name:known?.name??'HR '+id,
       type:known?.type??'Yale Bright Star Catalogue',
       color:known?.color??'#dceaff',
@@ -53,3 +55,4 @@ export function identifyYale(latitude:number,longitude:number,heading:number,alt
     .sort((a,b)=>(a.separation+Math.max(0,a.magnitude)*1.2)-(b.separation+Math.max(0,b.magnitude)*1.2));
   return candidates[0]??null;
 }
+

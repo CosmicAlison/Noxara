@@ -1,6 +1,12 @@
 /** Bright-star catalog (J2000 coordinates, approximate magnitudes). No network required. */
-export type Star = { name: string; type: string; color: string; ra: number; dec: number; magnitude: number; story: string };
+export type Star = { hr: number; name: string; type: string; color: string; ra: number; dec: number; magnitude: number; story: string };
 export type VisibleStar = Star & { altitude: number; azimuth: number; separation?: number };
+const brightStarHr: Record<string, number> = {
+  Sirius:2491, Canopus:2326, Arcturus:5340, Vega:7001, Capella:1708,
+  Rigel:1713, Procyon:2943, Achernar:472, Betelgeuse:2061, Hadar:5267,
+  Acrux:4730, Altair:7557, Aldebaran:1457, Spica:5056, Antares:6134,
+  Pollux:2990, Fomalhaut:8728, Deneb:7924, Mimosa:4853, Regulus:3982
+};
 export const stars: Star[] = [
   ['Sirius',6.7525,-16.716,-1.46,'#dceaff','The brightest star in the night sky, Sirius has guided travelers and inspired stories for millennia.'],
   ['Canopus',6.3992,-52.695,-0.74,'#fff2d5','Canopus is the second-brightest star in the night sky and a historic navigational beacon.'],
@@ -22,7 +28,7 @@ export const stars: Star[] = [
   ['Deneb',20.6905,45.28,1.25,'#e4eeff','Deneb is a distant luminous supergiant in Cygnus.'],
   ['Mimosa',12.7953,-59.689,1.25,'#dceaff','Mimosa is a bright blue star in the Southern Cross.'],
   ['Regulus',10.1395,11.967,1.35,'#dceaff','Regulus is the bright heart of Leo.']
-].map(([name,ra,dec,magnitude,color,story]) => ({name: name as string, ra: ra as number, dec: dec as number, magnitude: magnitude as number, color: color as string, story: story as string, type:'Bright star'}));
+].map(([name,ra,dec,magnitude,color,story]) => ({hr: brightStarHr[name as string], name: name as string, ra: ra as number, dec: dec as number, magnitude: magnitude as number, color: color as string, story: story as string, type:'Bright star'}));
 const rad = Math.PI/180;
 const normalize = (degrees:number) => ((degrees%360)+360)%360;
 export function horizontalCoordinates(raHours:number,decDeg:number,latitude:number,longitude:number,at:Date):{altitude:number;azimuth:number} {
@@ -47,3 +53,4 @@ export function identifyStar(latitude:number,longitude:number,heading:number,alt
   const candidates=visibleStars(latitude,longitude,at).map(s=>({...s,separation:angularDistance(heading,altitude,s.azimuth,s.altitude)})).sort((a,b)=>(a.separation??180)-(b.separation??180));
   return candidates[0] && candidates[0].separation!<=maxSeparation ? candidates[0] : null;
 }
+
