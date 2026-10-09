@@ -1,0 +1,22 @@
+{
+  "records": 9110,
+  "nameTypes": {
+    "henry_draper_designation": 5935,
+    "flamsteed_designation": 1552,
+    "proper_name": 407,
+    "bayer_designation": 1202,
+    "historical_catalogue_label": 14
+  },
+  "funFactTypes": {
+    "catalogue_based_explanation": 4634,
+    "historical_catalogue_note": 4454,
+    "sourced_summary": 22
+  },
+  "recordsWithCatalogueNotes": 4476,
+  "totalCatalogueNotes": 8425,
+  "sourceSha256": {
+    "catalog.txt": "69797549cc1605aad7ff94e9325e29a1661f2a253917faaa056d9bf20b809afd",
+    "notes.txt": "4614517ebb689fdf6e200d2ce7308b111c92272b8d5f7e492c86ec36777f6a0c",
+    "constellations.txt": "96706db3fd8455dfce2b56a99802f4a68d34f70cfef4596da66d6620e26e5b85"
+  }
+}

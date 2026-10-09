@@ -27,7 +27,7 @@ test('cancellation terminates work and late results cannot complete another requ
 });
 test('timeout terminates computation rather than leaving a late narration running',async()=>{
   const {client,workers}=fixture();client.ready=true;
-  await assert.rejects(client.request('voice',{},5),/too long/);
+  await assert.rejects(client.request('voice',{},5),/exceeded 60 seconds/);
   assert.equal(workers[0].terminated,true);assert.equal(client.ready,false);
 });
 test('worker crash rejects pending request and can restart',async()=>{
