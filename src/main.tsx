@@ -29,6 +29,7 @@ function App() {
   const [catalogCount,setCatalogCount]=useState(0);
   const [catalogError,setCatalogError]=useState('');
   const [speaking, setSpeaking] = useState(false);
+  const [voiceStatus,setVoiceStatus]=useState('');
   const [muted, setMuted] = useState(false);
   const [question, setQuestion] = useState('');
   const [response, setResponse] = useState('');
@@ -45,9 +46,9 @@ function App() {
   async function enableSensors(){const ctor=window.DeviceOrientationEvent as typeof DeviceOrientationEvent & {requestPermission?:()=>Promise<string>};if(!ctor){setSkyError('Motion sensors are not available in this browser.');return;}if(ctor.requestPermission){try{const permission=await ctor.requestPermission();setSensorPermission(permission==='granted'?'granted':'denied');setSkyError(permission==='granted'?'':'Motion access was denied. Enable motion access in your browser settings.');}catch{setSensorPermission('denied');setSkyError('Could not enable motion sensors.');}}else{setSensorPermission('granted');setSkyError('');}}
   async function beginSetup(){if(isEdgeReady()){setScreen('point');return;}setInstalling(true);setSetupError('');try{await installEdge(setSetupMessage);setScreen('point');}catch(e){setSetupError(e instanceof Error?e.message:String(e));}finally{setInstalling(false);}}
   function selectStar(selected:VisibleStar|SolarObject|YaleStar){stopAudio();setStar(selected);setResponse('');setScreen('discovery');timer.current=setTimeout(async()=>{try{const story=await askGemma(selected.name,selected.type,selected.story);setResponse(story);await narrate(story);}catch(e){setNotice(e instanceof Error?e.message:String(e));await narrate(selected.story);}},200);}
-  function stopAudio() { if (timer.current) clearTimeout(timer.current); window.speechSynthesis?.cancel();stopEdgeSpeech(); setSpeaking(false); }
+  function stopAudio() { if (timer.current) clearTimeout(timer.current); window.speechSynthesis?.cancel();stopEdgeSpeech(); setSpeaking(false);setVoiceStatus(''); }
   useEffect(() => () => { window.speechSynthesis?.cancel(); recognition.current?.stop(); }, []);
-  async function narrate(text:string){if(muted)return;setSpeaking(true);try{await speakEdge(text,()=>setSpeaking(false));}catch(e){setSpeaking(false);setNotice('Voice generation failed: '+String(e));}}
+  async function narrate(text:string){if(muted)return;setSpeaking(true);setVoiceStatus('Preparing narration…');try{await speakEdge(text,()=>{setSpeaking(false);setVoiceStatus('Narration finished.');},setVoiceStatus);}catch(e){setSpeaking(false);setNotice('Voice playback failed: '+String(e));}}
   function discover(){if(!position||heading===null||tilt===null){setSkyError('Waiting for location and orientation. Allow permissions, then point your phone at the sky and try again.');return;}const starMatch=catalogCount===9110?identifyYale(position.latitude,position.longitude,heading,tilt):identifyStar(position.latitude,position.longitude,heading,tilt);
     const solarMatch=identifySolarObject(position.latitude,position.longitude,heading,tilt);
     const match=!starMatch?solarMatch:!solarMatch?starMatch:(starMatch.separation??180)<=(solarMatch.separation??180)?starMatch:solarMatch;if(!match){setSkyError('No bright star, planet or Moon found near this direction. Try pointing toward a brighter object.');return;}selectStar(match);}
@@ -97,7 +98,7 @@ function App() {
       <span className="eyebrow">YOU'VE DISCOVERED</span><h1>{obj.name}</h1><p>{obj.type}</p>
       <div className="sky object"><div className="celestial" style={{ background: obj.color, boxShadow: '0 0 38px 16px ' + obj.color + '55, 0 0 100px 55px ' + obj.color + '22' }}/></div>
       <div className="narration">
-        <div className="narration-heading"><AudioLines size={20}/><span>{speaking ? 'Noxara is speaking…' : 'A story from the sky'}</span>
+        <div className="narration-heading"><AudioLines size={20}/><span>{speaking ? voiceStatus || 'Preparing narration…' : 'A story from the sky'}</span>
           <button className="icon-button" aria-label={muted ? 'Unmute narration' : 'Mute narration'} onClick={() => { stopAudio(); setMuted(m => !m); }}>{muted ? <VolumeX size={19}/> : <Volume2 size={19}/>}</button>
         </div>
         <p>{response || obj.story}</p>
