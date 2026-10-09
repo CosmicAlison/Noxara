@@ -6,15 +6,23 @@ let tts: any;
 let generator: any;
 let audio: HTMLAudioElement|null=null;
 let audioUrl: string|null=null;
-export function supportsEdge(){return typeof navigator!=='undefined' && 'gpu' in navigator;}
+export function supportsEdge(){return typeof WebAssembly!=='undefined';}
+async function hasWebGPU(){try{const gpu=(navigator as Navigator & {gpu?:{requestAdapter:()=>Promise<unknown>}}).gpu;return Boolean(gpu && await gpu.requestAdapter());}catch{return false;}}
 export async function installEdge(progress:SetupProgress){
-  if(!supportsEdge())throw new Error('This device/browser does not expose WebGPU. Please use an updated Chrome browser with WebGPU support.');
+  if(!supportsEdge())throw new Error('WebAssembly is unavailable in this browser.');
   progress('Downloading the Noxara voice. Keep this page open…');
   const {KokoroTTS}=await import('kokoro-js');
   tts=await KokoroTTS.from_pretrained(KOKORO,{device:'wasm',dtype:'q8'});
-  progress('Voice ready. Downloading Gemma; this may take several minutes…');
+  const gpuAvailable=await hasWebGPU();
+  progress(gpuAvailable?'Voice ready. Downloading Gemma for GPU inference…':'WebGPU unavailable. Attempting Gemma on CPU (slower)…');
   const {pipeline}=await import('@huggingface/transformers');
-  generator=await pipeline('text-generation',GEMMA,{device:'webgpu',dtype:'q4f16'});
+  try{
+    generator=await pipeline('text-generation',GEMMA,gpuAvailable?{device:'webgpu',dtype:'q4f16'}:{device:'wasm',dtype:'q8'});
+  }catch(error){
+    if(!gpuAvailable)throw new Error('Gemma CPU initialization failed: '+String(error));
+    progress('GPU initialization failed. Attempting Gemma on CPU (slower)…');
+    generator=await pipeline('text-generation',GEMMA,{device:'wasm',dtype:'q8'});
+  }
   progress('Warming up the models…');
   await generator([{role:'user',content:'Say ready.'}],{max_new_tokens:8,do_sample:false});
   progress('Ready to explore.');
