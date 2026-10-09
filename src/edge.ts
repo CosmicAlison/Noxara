@@ -40,16 +40,26 @@ export async function installEdge(progress:SetupProgress){
 }
 export function isEdgeReady(){return Boolean(tts&&generator);}
 export function stopEdgeSpeech(){if(audio){audio.pause();audio.src='';audio=null;}if(audioUrl){URL.revokeObjectURL(audioUrl);audioUrl=null;}}
-export async function speakEdge(text:string,onDone:()=>void){
+export async function speakEdge(text:string,onDone:()=>void,onStatus?:(message:string)=>void){
   if(!tts)throw new Error('Noxara voice is not installed.');
   stopEdgeSpeech();
+  onStatus?.('Kokoro is generating speech on your device…');
+  const started=performance.now();
   const output=await tts.generate(text,{voice:'af_heart'});
+  onStatus?.('Audio generated in '+Math.round((performance.now()-started)/1000)+'s. Preparing playback…');
   const blob=output.toBlob();
+  if(!blob.size)throw new Error('Kokoro produced an empty audio file.');
   audioUrl=URL.createObjectURL(blob);
   audio=new Audio(audioUrl);
+  audio.preload='auto';
   audio.onended=onDone;
-  audio.onerror=onDone;
-  await audio.play();
+  audio.onerror=()=>onStatus?.('Audio playback failed. Check Android media volume and retry.');
+  onStatus?.('Playing narration…');
+  try{await audio.play();}
+  catch(e){
+    onStatus?.('Android blocked automatic playback. Tap Hear it again to retry.');
+    throw new Error('Audio playback blocked: '+String(e));
+  }
 }
 export async function askGemma(name:string,type:string,facts:string,question?:string){
   if(!generator)throw new Error('Gemma is not installed.');
