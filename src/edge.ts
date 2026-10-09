@@ -1,5 +1,10 @@
 // Browser-only inference. Models are downloaded on demand and cached by the browser.
 export type SetupProgress = (message:string)=>void;
+function reportDownload(progress:SetupProgress,model:string,event:any){
+  if(event.status==='progress' && typeof event.progress==='number')progress(model+' download: '+Math.round(event.progress)+'%'+(event.file?' — '+event.file:''));
+  else if(event.status==='initiate')progress(model+': fetching '+(event.file||'model resources'));
+  else if(event.status==='done')progress(model+': cached '+(event.file||'model resource'));
+}
 const KOKORO='onnx-community/Kokoro-82M-v1.0-ONNX';
 const GEMMA='onnx-community/gemma-3-270m-it-ONNX';
 let tts: any;
@@ -10,22 +15,28 @@ export function supportsEdge(){return typeof WebAssembly!=='undefined';}
 async function hasWebGPU(){try{const gpu=(navigator as Navigator & {gpu?:{requestAdapter:()=>Promise<unknown>}}).gpu;return Boolean(gpu && await gpu.requestAdapter());}catch{return false;}}
 export async function installEdge(progress:SetupProgress){
   if(!supportsEdge())throw new Error('WebAssembly is unavailable in this browser.');
-  progress('Downloading the Noxara voice. Keep this page open…');
+  progress('Step 1 of 2 — downloading Kokoro voice. Keep this page open…');
   const {KokoroTTS}=await import('kokoro-js');
-  tts=await KokoroTTS.from_pretrained(KOKORO,{device:'wasm',dtype:'q8'});
+  tts=await KokoroTTS.from_pretrained(KOKORO,{device:'wasm',dtype:'q8',progress_callback:(event:any)=>reportDownload(progress,'Kokoro',event)});
+  progress('Kokoro installed. Step 2 of 2 — preparing Gemma…');
   const gpuAvailable=await hasWebGPU();
-  progress(gpuAvailable?'Voice ready. Downloading Gemma for GPU inference…':'WebGPU unavailable. Attempting Gemma on CPU (slower)…');
-  const {pipeline}=await import('@huggingface/transformers');
+  const backend=gpuAvailable?'webgpu':'wasm';
+  const precision=gpuAvailable?'q4f16':'fp32';
+  progress('Gemma: using '+(gpuAvailable?'WebGPU':'CPU / WebAssembly')+' ('+precision+'). Downloading model files…');
   try{
-    generator=await pipeline('text-generation',GEMMA,gpuAvailable?{device:'webgpu',dtype:'q4f16'}:{device:'wasm',dtype:'q8'});
+    const {pipeline}=await import('@huggingface/transformers');
+    generator=await pipeline('text-generation',GEMMA,{
+      device:backend,dtype:precision,
+      progress_callback:(event:any)=>reportDownload(progress,'Gemma',event)
+    });
+    progress('Gemma downloaded. Testing local '+(gpuAvailable?'GPU':'CPU')+' inference…');
+    const test=await generator([{role:'user',content:'Say ready.'}],{max_new_tokens:4,do_sample:false});
+    if(!test?.length)throw new Error('Gemma returned no test output.');
+    progress('Kokoro and Gemma both ready. Entering Noxara…');
   }catch(error){
-    if(!gpuAvailable)throw new Error('Gemma CPU initialization failed: '+String(error));
-    progress('GPU initialization failed. Attempting Gemma on CPU (slower)…');
-    generator=await pipeline('text-generation',GEMMA,{device:'wasm',dtype:'q8'});
+    generator=null;
+    throw new Error('Gemma '+backend+' setup failed: '+String(error)+'. Kokoro is cached; retry setup or use a more capable device.');
   }
-  progress('Warming up the models…');
-  await generator([{role:'user',content:'Say ready.'}],{max_new_tokens:8,do_sample:false});
-  progress('Ready to explore.');
 }
 export function isEdgeReady(){return Boolean(tts&&generator);}
 export function stopEdgeSpeech(){if(audio){audio.pause();audio.src='';audio=null;}if(audioUrl){URL.revokeObjectURL(audioUrl);audioUrl=null;}}
