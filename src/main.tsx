@@ -44,7 +44,7 @@ function App() {
   useEffect(()=>{if(screen!=='point')return;const handler=(event:Event)=>{const e=event as DeviceOrientationEvent & {webkitCompassHeading?:number};if(typeof e.webkitCompassHeading==='number')setHeading(e.webkitCompassHeading);else if(e.absolute&&typeof e.alpha==='number')setHeading((360-e.alpha)%360);if(typeof e.beta==='number')setTilt(Math.max(0,Math.min(90,e.beta)));};window.addEventListener('deviceorientationabsolute',handler);window.addEventListener('deviceorientation',handler);return()=>{window.removeEventListener('deviceorientationabsolute',handler);window.removeEventListener('deviceorientation',handler);};},[screen]);
   async function enableSensors(){const ctor=window.DeviceOrientationEvent as typeof DeviceOrientationEvent & {requestPermission?:()=>Promise<string>};if(!ctor){setSkyError('Motion sensors are not available in this browser.');return;}if(ctor.requestPermission){try{const permission=await ctor.requestPermission();setSensorPermission(permission==='granted'?'granted':'denied');setSkyError(permission==='granted'?'':'Motion access was denied. Enable motion access in your browser settings.');}catch{setSensorPermission('denied');setSkyError('Could not enable motion sensors.');}}else{setSensorPermission('granted');setSkyError('');}}
   async function beginSetup(){if(isEdgeReady()){setScreen('point');return;}setInstalling(true);setSetupError('');try{await installEdge(setSetupMessage);setScreen('point');}catch(e){setSetupError(e instanceof Error?e.message:String(e));}finally{setInstalling(false);}}
-  function selectStar(selected:VisibleStar|SolarObject|YaleStar){stopAudio();setStar(selected);setResponse('');setScreen('discovery');timer.current=setTimeout(async()=>{try{const story=await askGemma(selected.name,selected.type,selected.story);setResponse(story);await narrate(story);}catch(e){setNotice(e instanceof Error?e.message:String(e));await narrate(selected.story);}},200);}
+  function selectStar(selected:VisibleStar|SolarObject|YaleStar){stopAudio();setStar(selected);setResponse('');setScreen('discovery');timer.current=setTimeout(async()=>{try{const story=await askGemma(selected);setResponse(story);await narrate(story);}catch(e){setNotice(e instanceof Error?e.message:String(e));await narrate(selected.story);}},200);}
   function stopAudio() { if (timer.current) clearTimeout(timer.current); window.speechSynthesis?.cancel();stopEdgeSpeech(); setSpeaking(false); }
   useEffect(() => () => { window.speechSynthesis?.cancel(); recognition.current?.stop(); }, []);
   async function narrate(text:string){if(muted)return;setSpeaking(true);try{await speakEdge(text,()=>setSpeaking(false));}catch(e){setSpeaking(false);setNotice('Voice generation failed: '+String(e));}}
@@ -67,7 +67,7 @@ function App() {
     const q = question.trim(); if (!q) return;
     recognition.current?.stop();
     setScreen('discovery');setResponse('Thinking about your question…');
-    void askGemma(obj.name,obj.type,obj.story,q).then(reply=>{setResponse(reply);return narrate(reply);}).catch(e=>{setResponse('I could not generate an answer. Please try again.');setNotice(String(e));});
+    void askGemma(obj,q).then(reply=>{setResponse(reply);return narrate(reply);}).catch(e=>{setResponse('I could not generate an answer. Please try again.');setNotice(String(e));});
   }
   function cancelQuestion() { recognition.current?.stop(); setScreen('discovery'); }
   return <main className="app">
@@ -119,3 +119,4 @@ function App() {
   </main>;
 }
 createRoot(document.getElementById('root')!).render(<App/>);
+

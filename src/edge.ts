@@ -1,3 +1,4 @@
+import {getStarFacts, objectContext, gemmaPrompt, type GuideObject} from './star-facts';
 // Browser-only inference. Models are downloaded on demand and cached by the browser.
 export type SetupProgress = (message:string)=>void;
 function reportDownload(progress:SetupProgress,model:string,event:any){
@@ -51,11 +52,13 @@ export async function speakEdge(text:string,onDone:()=>void){
   audio.onerror=onDone;
   await audio.play();
 }
-export async function askGemma(name:string,type:string,facts:string,question?:string){
+export async function askGemma(object:GuideObject,question?:string){
   if(!generator)throw new Error('Gemma is not installed.');
-  const prompt='You are Noxara, a warm, concise astronomy storyteller. Speak naturally in 2-4 short sentences. Only assert facts supported by the supplied verified object data; never invent distances, dates, mythology or physical properties. If asked for unknown details, say you cannot verify them. Object: '+name+'. Classification: '+type+'. Verified context: '+facts+'. '+(question?'User asks: '+question:'Introduce this object poetically.');
-  const result=await generator([{role:'user',content:prompt}],{max_new_tokens:130,do_sample:false});
+  // Enrichment failure must not prevent narration from the base catalogue.
+  const enrichment=object.hr===undefined?null:await getStarFacts(object.hr).catch(()=>null);
+  const context=objectContext(object,enrichment);
+  const result=await generator([{role:'user',content:gemmaPrompt(object,context,question)}],{max_new_tokens:180,do_sample:false});
   const messages=result?.[0]?.generated_text;
   const answer=Array.isArray(messages)?messages[messages.length - 1]?.content:String(messages??'');
-  return typeof answer==='string'&&answer.trim()?answer.trim():facts;
+  return typeof answer==='string'&&answer.trim()?answer.trim():object.story;
 }
