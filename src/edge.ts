@@ -14,20 +14,30 @@ export async function installEdge(progress:SetupProgress){
   const {KokoroTTS}=await import('kokoro-js');
   tts=await KokoroTTS.from_pretrained(KOKORO,{device:'wasm',dtype:'q8'});
   const gpuAvailable=await hasWebGPU();
-  progress(gpuAvailable?'Voice ready. Downloading Gemma for GPU inference…':'WebGPU unavailable. Attempting Gemma on CPU (slower)…');
-  const {pipeline}=await import('@huggingface/transformers');
-  try{
-    generator=await pipeline('text-generation',GEMMA,gpuAvailable?{device:'webgpu',dtype:'q4f16'}:{device:'wasm',dtype:'q8'});
-  }catch(error){
-    if(!gpuAvailable)throw new Error('Gemma CPU initialization failed: '+String(error));
-    progress('GPU initialization failed. Attempting Gemma on CPU (slower)…');
-    generator=await pipeline('text-generation',GEMMA,{device:'wasm',dtype:'q8'});
+  if(!gpuAvailable){
+    progress('Voice installed. This browser has no working WebGPU adapter, so Gemma is unavailable. You can still explore and hear the verified astronomy stories.');
+    return;
   }
-  progress('Warming up the models…');
-  await generator([{role:'user',content:'Say ready.'}],{max_new_tokens:8,do_sample:false});
-  progress('Ready to explore.');
+  progress('Voice ready. Preparing Gemma for GPU inference…');
+  try{
+    const {pipeline}=await import('@huggingface/transformers');
+    generator=await pipeline('text-generation',GEMMA,{
+      device:'webgpu',dtype:'q4f16',
+      progress_callback:(event:any)=>{
+        if(event.status==='progress' && typeof event.progress==='number')progress('Downloading Gemma: '+Math.round(event.progress)+'%'+(event.file?' — '+event.file:''));
+        else if(event.status==='initiate')progress('Fetching Gemma resource: '+(event.file||'model files'));
+        else if(event.status==='done')progress('Cached: '+(event.file||'model resource'));
+      }
+    });
+    progress('Warming up Gemma…');
+    await generator([{role:'user',content:'Say ready.'}],{max_new_tokens:8,do_sample:false});
+    progress('Voice and Gemma ready to explore.');
+  }catch(error){
+    generator=null;
+    progress('Voice installed. Gemma could not start on this browser: '+String(error)+'. Verified stories remain available.');
+  }
 }
-export function isEdgeReady(){return Boolean(tts&&generator);}
+export function isEdgeReady(){return Boolean(tts);}
 export function stopEdgeSpeech(){if(audio){audio.pause();audio.src='';audio=null;}if(audioUrl){URL.revokeObjectURL(audioUrl);audioUrl=null;}}
 export async function speakEdge(text:string,onDone:()=>void){
   if(!tts)throw new Error('Noxara voice is not installed.');
@@ -41,7 +51,7 @@ export async function speakEdge(text:string,onDone:()=>void){
   await audio.play();
 }
 export async function askGemma(name:string,type:string,facts:string,question?:string){
-  if(!generator)throw new Error('Gemma is not installed.');
+  if(!generator)return question?'I can share this verified information about '+name+': '+facts+' I cannot answer additional questions without the local AI model.':facts;
   const prompt='You are Noxara, a warm, concise astronomy storyteller. Speak naturally in 2-4 short sentences. Only assert facts supported by the supplied verified object data; never invent distances, dates, mythology or physical properties. If asked for unknown details, say you cannot verify them. Object: '+name+'. Classification: '+type+'. Verified context: '+facts+'. '+(question?'User asks: '+question:'Introduce this object poetically.');
   const result=await generator([{role:'user',content:prompt}],{max_new_tokens:130,do_sample:false});
   const messages=result?.[0]?.generated_text;
