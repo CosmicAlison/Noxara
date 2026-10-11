@@ -83,11 +83,12 @@ async function playSpeechBlob(blob:Blob,generation:number):Promise<void>{
   try{
     await new Promise<void>((resolve,reject)=>{
       player.onended=()=>resolve();
+      player.onpause=()=>{if(generation!==speechGeneration)resolve();};
       player.onerror=()=>reject(new Error('Android audio playback failed.'));
       player.play().catch(reject);
     });
   }finally{
-    player.pause();player.onended=null;player.onerror=null;
+    player.pause();player.onended=null;player.onerror=null;player.onpause=null;
     if(audio===player)audio=null;
     if(audioUrl===url)audioUrl=null;
     URL.revokeObjectURL(url);
