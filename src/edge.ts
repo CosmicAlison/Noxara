@@ -52,31 +52,73 @@ export async function installEdge(progress:SetupProgress){
   throw new Error('Gemma initialization failed. '+failures.join(' | '));
 }
 export function isEdgeReady(){return Boolean(tts&&generator);}
-export function stopEdgeSpeech(){if(audio){audio.pause();audio.src='';audio=null;}if(audioUrl){URL.revokeObjectURL(audioUrl);audioUrl=null;}}
+let speechGeneration=0;
+/** Small chunks keep CPU/WASM synthesis responsive on mid-range Android phones. */
+function speechChunks(text:string,maxChars=105):string[]{
+  const sentences=(text.match(/[^.!?]+(?:[.!?]+|$)/g)||[text]).map(s=>s.trim()).filter(Boolean);
+  const chunks:string[]=[];
+  for(const sentence of sentences){
+    const words=sentence.split(/\s+/);
+    let current='';
+    for(const word of words){
+      if(current && (current.length+word.length+1>maxChars)){
+        chunks.push(current);current='';
+      }
+      current+=(current?' ':'')+word;
+    }
+    if(current)chunks.push(current);
+  }
+  return chunks;
+}
+export function stopEdgeSpeech(){
+  speechGeneration++;
+  if(audio){audio.pause();audio.removeAttribute('src');audio.load();audio=null;}
+  if(audioUrl){URL.revokeObjectURL(audioUrl);audioUrl=null;}
+}
+async function playSpeechBlob(blob:Blob,generation:number):Promise<void>{
+  if(generation!==speechGeneration)return;
+  const url=URL.createObjectURL(blob);
+  const player=new Audio(url);
+  audio=player;audioUrl=url;
+  try{
+    await new Promise<void>((resolve,reject)=>{
+      player.onended=()=>resolve();
+      player.onerror=()=>reject(new Error('Android audio playback failed.'));
+      player.play().catch(reject);
+    });
+  }finally{
+    player.pause();player.onended=null;player.onerror=null;
+    if(audio===player)audio=null;
+    if(audioUrl===url)audioUrl=null;
+    URL.revokeObjectURL(url);
+  }
+}
 export async function speakEdge(text:string,onDone:()=>void,onStatus?:(message:string)=>void){
   if(!tts)throw new Error('Noxara voice is not installed.');
   stopEdgeSpeech();
-  onStatus?.('Kokoro is generating speech on your device…');
-  const started=performance.now();
-  const output=await tts.generate(text,{voice:'af_heart'});
-  onStatus?.('Audio generated in '+Math.round((performance.now()-started)/1000)+'s. Preparing playback…');
-  const blob=output.toBlob();
-  if(!blob.size)throw new Error('Kokoro produced an empty audio file.');
-  audioUrl=URL.createObjectURL(blob);
-  audio=new Audio(audioUrl);
-  audio.preload='auto';
-  audio.onended=onDone;
-  audio.onerror=()=>onStatus?.('Audio playback failed. Check Android media volume and retry.');
-  onStatus?.('Playing narration…');
-  try{await audio.play();}
-  catch(e){
-    onStatus?.('Android blocked automatic playback. Tap Hear it again to retry.');
-    throw new Error('Audio playback blocked: '+String(e));
+  const generation=speechGeneration;
+  const chunks=speechChunks(text);
+  if(!chunks.length){onDone();return;}
+  try{
+    for(let i=0;i<chunks.length;i++){
+      if(generation!==speechGeneration)return;
+      onStatus?.('Generating voice · '+(i+1)+' of '+chunks.length+'…');
+      const started=performance.now();
+      const output=await tts.generate(chunks[i],{voice:'af_heart'});
+      if(generation!==speechGeneration)return;
+      const blob=output.toBlob();
+      if(!blob.size)throw new Error('Kokoro produced empty audio for chunk '+(i+1)+'.');
+      onStatus?.('Playing '+(i+1)+' of '+chunks.length+' · generated in '+Math.round((performance.now()-started)/1000)+'s');
+      await playSpeechBlob(blob,generation);
+    }
+    if(generation===speechGeneration)onDone();
+  }catch(e){
+    if(generation===speechGeneration)throw e;
   }
 }
 export async function askGemma(name:string,type:string,facts:string,question?:string){
   if(!generator)throw new Error('Gemma is not installed.');
-  const prompt='You are Noxara, a warm, concise astronomy storyteller. Speak naturally in 2-4 short sentences. Only assert facts supported by the supplied verified object data; never invent distances, dates, mythology or physical properties. If asked for unknown details, say you cannot verify them. Object: '+name+'. Classification: '+type+'. Verified context: '+facts+'. '+(question?'User asks: '+question:'Introduce this object poetically.');
+  const prompt='You are Noxara, a warm, concise astronomy storyteller. Speak naturally in 2-4 short sentences. Only assert facts supported by the supplied verified object data; never invent distances, dates, mythology or physical properties. Speak with wonder, not like a scientific disclaimer. When a number is an estimate, naturally say about, roughly, or approximately once. Never say phrases such as 'not a measured temperature', 'this is an estimate rather than a measurement', or discuss uncertainty methodology unless specifically asked. If asked for an unknown detail, briefly say it is unknown. Object: '+name+'. Classification: '+type+'. Verified context: '+facts+'. '+(question?'User asks: '+question:'Introduce this object poetically.');
   const result=await generator([{role:'user',content:prompt}],{max_new_tokens:130,do_sample:false});
   const messages=result?.[0]?.generated_text;
   const answer=Array.isArray(messages)?messages[messages.length - 1]?.content:String(messages??'');
