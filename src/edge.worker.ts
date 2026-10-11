@@ -23,7 +23,7 @@ async function installEdge(progress:SetupProgress){
     progress('Gemma downloaded. Testing local '+(gpuAvailable?'GPU':'CPU')+' inference…');
     const test=await generator([{role:'user',content:'Say ready.'}],{max_new_tokens:4,do_sample:false});
     readAnswer(test);
-    progress('Gemma ready. Piper voice will download when you first request narration.');
+    progress('Gemma ready. Preparing voice next…');
   }catch(error){
     generator=null;
     throw new Error('Local guide '+backend+' setup failed: '+String(error)+'. Retry setup or use a more capable device.');
