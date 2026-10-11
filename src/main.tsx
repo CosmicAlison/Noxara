@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ArrowLeft, ArrowRight, AudioLines, Check, Compass, Mic, RotateCcw, Volume2, VolumeX } from 'lucide-react';
 import './style.css';
-import {installEdge,isEdgeReady,speakNarration,stopEdgeSpeech,askGemma,supportsEdge,prepareNarration,cancelEdgeGeneration} from './edge';
+import {installEdge,isEdgeReady,isGuideReady,speakNarration,stopEdgeSpeech,askGemma,supportsEdge,prepareNarration,cancelEdgeGeneration} from './edge';
 import {identifyStar,type VisibleStar} from './astronomy';
 import {identifySolarObject,type SolarObject} from './ephemeris';
 import {loadYaleCatalog,identifyYale,type YaleStar} from './yale';
@@ -37,7 +37,7 @@ function App() {
   const [response, setResponse] = useState('');
   const [notice, setNotice] = useState('');
   const [installing,setInstalling]=useState(false);
-  const [setupMessage,setSetupMessage]=useState("Download a small local astronomy AI. Piper's voice is downloaded separately when first used. Wi-Fi is recommended.");
+  const [setupMessage,setSetupMessage]=useState('Ready to prepare your guide.');
   const [setupError,setSetupError]=useState('');
   const recognition = useRef<SpeechRecognitionLike | null>(null);
   const generation = useRef(0);
@@ -52,7 +52,7 @@ function App() {
   useEffect(()=>{if(screen!=='point')return;navigator.geolocation?.getCurrentPosition(p=>setPosition({latitude:p.coords.latitude,longitude:p.coords.longitude}),()=>setSkyError('Enable location access to identify stars.'),{enableHighAccuracy:true,timeout:12000});},[screen]);
   useEffect(()=>{if(screen!=='point')return;const handler=(event:Event)=>{const e=event as DeviceOrientationEvent & {webkitCompassHeading?:number};if(typeof e.webkitCompassHeading==='number')setHeading(e.webkitCompassHeading);else if(e.absolute&&typeof e.alpha==='number')setHeading((360-e.alpha)%360);if(typeof e.beta==='number')setTilt(Math.max(0,Math.min(90,e.beta)));};window.addEventListener('deviceorientationabsolute',handler);window.addEventListener('deviceorientation',handler);return()=>{window.removeEventListener('deviceorientationabsolute',handler);window.removeEventListener('deviceorientation',handler);};},[screen]);
   async function enableSensors(){const ctor=window.DeviceOrientationEvent as typeof DeviceOrientationEvent & {requestPermission?:()=>Promise<string>};if(!ctor){setSkyError('Motion sensors are not available in this browser.');return;}if(ctor.requestPermission){try{const permission=await ctor.requestPermission();setSensorPermission(permission==='granted'?'granted':'denied');setSkyError(permission==='granted'?'':'Motion access was denied. Enable motion access in your browser settings.');}catch{setSensorPermission('denied');setSkyError('Could not enable motion sensors.');}}else{setSensorPermission('granted');setSkyError('');}}
-  async function beginSetup(){if(isEdgeReady()){setScreen('point');return;}setInstalling(true);setSetupError('');try{await installEdge(setSetupMessage);setScreen('point');}catch(e){setSetupError(e instanceof Error?e.message:String(e));}finally{setInstalling(false);}}
+  async function beginSetup(){if(isGuideReady()){setScreen('point');return;}setInstalling(true);setSetupError('');try{await installEdge(setSetupMessage);setScreen('point');}catch(e){setSetupError(e instanceof Error?e.message:String(e));}finally{setInstalling(false);}}
   async function generateNarrative(selected:VisibleStar|SolarObject|YaleStar|CelestialObject,q?:string){
     if(generating.current)return;
     generating.current=true;
@@ -145,7 +145,7 @@ function App() {
       <button className="primary" onClick={() => setScreen('setup')}>Begin exploring <ArrowRight size={20}/></button>
       <small>No account. No distractions. Just the sky.</small>
     </section>}
-    {screen === 'setup' && <section className="screen setup"><span className="eyebrow">PREPARE YOUR UNIVERSE</span><h1>Make the cosmos <em>yours.</em></h1><p>Noxara installs Gemma for local astronomy stories. Piper downloads its offline voice on first use. Gemma must initialize successfully before you can enter the sky experience. Installation requires an internet connection. Gemma uses WebGPU where available or attempts CPU / WebAssembly otherwise; CPU setup may be slow and memory-intensive. Gemma must pass initialization before entering. Afterwards, cached models can run locally.</p><div className="narration"><div className="narration-heading"><AudioLines size={20}/> Your private, on-device guide</div><p role="status">{setupMessage}</p>{installing&&<progress className="setup-progress"/>}{setupError&&<p className="notice" role="alert">{setupError}</p>}</div><button className="primary" disabled={installing||!supportsEdge()} onClick={beginSetup}>{installing?'Installing resources…':'Install Gemma guide'} <ArrowRight size={19}/></button>{!supportsEdge()&&<p className="notice">This browser cannot run the local guide. Try an updated browser.</p>}<small>Downloads are cached by your browser and may need repeating if site data is cleared.</small></section>}
+    {screen === 'setup' && <section className="screen setup"><span className="eyebrow">PREPARE YOUR UNIVERSE</span><h1>Make the cosmos <em>yours.</em></h1><p>Download Gemma for star stories and Piper for natural, on-device narration. One-time setup · Wi-Fi recommended.</p><div className="narration"><div className="narration-heading"><AudioLines size={20}/> Your private, on-device guide</div><p role="status">{setupMessage}</p>{installing&&<progress className="setup-progress"/>}{setupError&&<p className="notice" role="alert">{setupError}</p>}</div><button className="primary" disabled={installing||!supportsEdge()} onClick={beginSetup}>{installing?'Installing resources…':'Install guide & voice'} <ArrowRight size={19}/></button>{!supportsEdge()&&<p className="notice">This browser cannot run the local guide. Try an updated browser.</p>}<small>Both models are saved on this device for future visits.</small></section>}
     {screen === 'point' && <section className="screen point">
       <span className="eyebrow">01 / LOOK UP</span><h1>Find something <em>wonderful.</em></h1>
       <p>Point the top of your phone toward the sky.</p>
