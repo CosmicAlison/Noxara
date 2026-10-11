@@ -38,7 +38,7 @@ function App() {
   const [response, setResponse] = useState('');
   const [notice, setNotice] = useState('');
   const [installing,setInstalling]=useState(false);
-  const [setupMessage,setSetupMessage]=useState('Download a natural voice and a small local astronomy AI. These resources are saved by your browser for later visits. A Wi-Fi connection is recommended.');
+  const [setupMessage,setSetupMessage]=useState('Download a small local astronomy AI. Piper's voice is downloaded separately when first used. Wi-Fi is recommended.');
   const [setupError,setSetupError]=useState('');
   const recognition = useRef<SpeechRecognitionLike | null>(null);
   const generation = useRef(0);
@@ -100,7 +100,7 @@ function App() {
     generation.current++;generating.current=false;cancelEdgeGeneration();stopAudio();
     setScreen(response?'discovery':'point');
   }
-  function stopAudio(){speechRequest.current++;if(voiceLoading)cancelEdgeGeneration();stopEdgeSpeech();setSpeaking(false);setVoiceLoading(false);}
+  function stopAudio(){speechRequest.current++;stopEdgeSpeech();setSpeaking(false);setVoiceLoading(false);}
   useEffect(()=>{
     if(screen!=='loading')return;
     const clock=setInterval(()=>setLoadingSeconds(seconds=>seconds+1),1000);
@@ -163,7 +163,7 @@ function App() {
       <button className="primary" onClick={() => setScreen('setup')}>Begin exploring <ArrowRight size={20}/></button>
       <small>No account. No distractions. Just the sky.</small>
     </section>}
-    {screen === 'setup' && <section className="screen setup"><span className="eyebrow">PREPARE YOUR UNIVERSE</span><h1>Make the cosmos <em>yours.</em></h1><p>Noxara installs Kokoro first, then Gemma. Piper is available as the default narration engine and downloads its voice on first use. Both models must download and initialize successfully before you can enter the sky experience. Installation requires an internet connection. Gemma uses WebGPU where available or attempts CPU / WebAssembly otherwise; CPU setup may be slow and memory-intensive. Both models must pass initialization before entering. Afterwards, cached models can run locally.</p><div className="narration"><div className="narration-heading"><AudioLines size={20}/> Your private, on-device guide</div><p role="status">{setupMessage}</p>{installing&&<progress className="setup-progress"/>}{setupError&&<p className="notice" role="alert">{setupError}</p>}</div><button className="primary" disabled={installing||!supportsEdge()} onClick={beginSetup}>{installing?'Installing resources…':'Install Kokoro & Gemma'} <ArrowRight size={19}/></button>{!supportsEdge()&&<p className="notice">This browser cannot run the local guide. Try an updated browser.</p>}<small>Downloads are cached by your browser and may need repeating if site data is cleared.</small></section>}
+    {screen === 'setup' && <section className="screen setup"><span className="eyebrow">PREPARE YOUR UNIVERSE</span><h1>Make the cosmos <em>yours.</em></h1><p>Noxara installs Gemma for local astronomy stories. Piper is the default narration engine and downloads its voice on first use. Kokoro remains an optional comparison voice. Gemma must initialize successfully before you can enter the sky experience. Installation requires an internet connection. Gemma uses WebGPU where available or attempts CPU / WebAssembly otherwise; CPU setup may be slow and memory-intensive. Gemma must pass initialization before entering. Afterwards, cached models can run locally.</p><div className="narration"><div className="narration-heading"><AudioLines size={20}/> Your private, on-device guide</div><p role="status">{setupMessage}</p>{installing&&<progress className="setup-progress"/>}{setupError&&<p className="notice" role="alert">{setupError}</p>}</div><button className="primary" disabled={installing||!supportsEdge()} onClick={beginSetup}>{installing?'Installing resources…':'Install Gemma guide'} <ArrowRight size={19}/></button>{!supportsEdge()&&<p className="notice">This browser cannot run the local guide. Try an updated browser.</p>}<small>Downloads are cached by your browser and may need repeating if site data is cleared.</small></section>}
     {screen === 'point' && <section className="screen point">
       <span className="eyebrow">01 / LOOK UP</span><h1>Find something <em>wonderful.</em></h1>
       <p>Point the top of your phone toward the sky.</p>
