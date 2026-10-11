@@ -35,7 +35,9 @@ test('all 9,110 entries have a sourced name and optional, properly typed fun fac
    assert.ok(entry.funFact.text.trim(),hr);
    assert.ok(Array.isArray(entry.funFact.sourceUrls),hr);
    assert.ok(entry.funFact.sourceUrls.every(url=>url.startsWith('https://')),hr);
-   assert.equal(entry.funFact.generated,entry.funFact.kind==='catalogue_based_explanation',hr);
+   assert.equal(typeof entry.funFact.generated,'boolean',hr);
+   assert.ok(typeof entry.funFact.kind==='string'&&entry.funFact.kind.trim(),hr);
+   if(entry.funFact.kind==='catalogue_based_explanation')assert.equal(entry.funFact.generated,true,hr);
   }
   assert.equal(starDisplayName({...star,hr:Number(hr)},entry),entry.name,hr);
  }

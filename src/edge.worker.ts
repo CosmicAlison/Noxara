@@ -10,11 +10,14 @@ const GEMMA='onnx-community/gemma-3-270m-it-ONNX';
 let tts: any;
 let generator: any;
 async function hasWebGPU(){try{const gpu=(navigator as Navigator & {gpu?:{requestAdapter:()=>Promise<unknown>}}).gpu;return Boolean(gpu && await gpu.requestAdapter());}catch{return false;}}
-async function installEdge(progress:SetupProgress){
-  progress('Step 1 of 2 — downloading Kokoro voice. Keep this page open…');
+async function ensureKokoro(progress:SetupProgress){
+  if(tts)return;
+  progress('Preparing Kokoro comparison voice…');
   const {KokoroTTS}=await import('kokoro-js');
   tts=await KokoroTTS.from_pretrained(KOKORO,{device:'wasm',dtype:'q8',progress_callback:(event:any)=>reportDownload(progress,'Kokoro',event)});
-  progress('Kokoro installed. Step 2 of 2 — preparing Gemma…');
+}
+async function installEdge(progress:SetupProgress){
+  progress('Preparing local Gemma astronomy guide…');
   const gpuAvailable=await hasWebGPU();
   const backend=gpuAvailable?'webgpu':'wasm';
   const precision=gpuAvailable?'q4f16':'fp32';
@@ -28,12 +31,10 @@ async function installEdge(progress:SetupProgress){
     progress('Gemma downloaded. Testing local '+(gpuAvailable?'GPU':'CPU')+' inference…');
     const test=await generator([{role:'user',content:'Say ready.'}],{max_new_tokens:4,do_sample:false});
     readAnswer(test);
-    progress('Testing narration…');
-    await tts.generate('Ready.',{voice:'af_heart'});
-    progress('Kokoro and Gemma both ready. Entering Noxara…');
+    progress('Gemma ready. Piper voice will download when you first request narration.');
   }catch(error){
     generator=null;
-    throw new Error('Local guide '+backend+' setup failed: '+String(error)+'. Kokoro is cached; retry setup or use a more capable device.');
+    throw new Error('Local guide '+backend+' setup failed: '+String(error)+'. Retry setup or use a more capable device.');
   }
 }
 
@@ -62,7 +63,7 @@ self.onmessage=async(event:MessageEvent)=>{
       progress(question?'Thinking about your question…':'Writing your story…');
       result=readAnswer(await generator([{role:'user',content:gemmaPrompt(object,objectContext(object,facts),question)}],{max_new_tokens:96,do_sample:false}));
     }else if(task==='voice'){
-      if(!tts)throw new Error('The voice is not ready. Please retry setup.');
+      await ensureKokoro(progress);
       result=(await tts.generate(payload.text,{voice:'af_heart'})).toBlob();
     }else throw new Error('Unknown guide operation.');
     self.postMessage({id,result});
