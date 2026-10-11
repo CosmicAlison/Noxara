@@ -1,5 +1,5 @@
 import type {GuideObject} from './star-facts';
-import {preparePiper,synthesizePiper,resetPiper} from './piper';
+import {preparePiper,isPiperReady,synthesizePiper,resetPiper} from './piper';
 import {ModelWorkerClient} from './worker-client';
 export type SetupProgress=(message:string)=>void;
 const client=new ModelWorkerClient(()=>new Worker(new URL('./edge.worker.ts',import.meta.url),{type:'module'}));
@@ -9,11 +9,18 @@ let speechVersion=0;
 let cachedPiper:{text:string;blob:Blob}|null=null;
 export function supportsEdge(){return typeof WebAssembly!=='undefined'&&typeof Worker!=='undefined';}
 export function isEdgeReady(){return client.ready;}
+export function isGuideReady(){return client.ready && isPiperReady();}
 export async function installEdge(progress:SetupProgress){
   if(!supportsEdge())throw new Error('This browser cannot run the local guide.');
-  if(client.ready)return;
-  try{await client.request('install',null,15*60*1000,progress);client.ready=true;}
-  catch(error){client.reset();throw error;}
+  if(isGuideReady())return;
+  // Install in sequence to avoid exhausting mobile memory with simultaneous model initialization.
+  if(!client.ready){
+    try{progress('Step 1 of 2 · Preparing Gemma…');await client.request('install',null,15*60*1000,progress);client.ready=true;}
+    catch(error){client.reset();throw error;}
+  }
+  progress('Step 2 of 2 · Preparing Piper voice…');
+  await preparePiper(progress);
+  progress('Gemma and Piper are ready.');
 }
 export function stopEdgeSpeech(){
   speechVersion++;
