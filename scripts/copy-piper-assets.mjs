@@ -1,10 +1,17 @@
-import {mkdir,readdir,copyFile} from 'node:fs/promises';
+import {mkdir,readdir,copyFile,readFile} from 'node:fs/promises';
 import {createRequire} from 'node:module';
 import {dirname,join} from 'node:path';
 const require=createRequire(import.meta.url);
 const destination='public/piper-runtime';
-const phonemizer=dirname(require.resolve('@diffusionstudio/piper-wasm/package.json'));
-const onnx=dirname(require.resolve('onnxruntime-web/package.json'));
+async function packageDir(name){
+  let dir=dirname(require.resolve(name));
+  for(let depth=0;depth<8;depth++,dir=dirname(dir)){
+    try{const pkg=JSON.parse(await readFile(join(dir,'package.json'),'utf8'));if(pkg.name===name)return dir;}catch{}
+  }
+  throw new Error('Could not locate '+name+' package root.');
+}
+const phonemizer=await packageDir('@diffusionstudio/piper-wasm');
+const onnx=await packageDir('onnxruntime-web');
 await mkdir(join(destination,'onnx'),{recursive:true});
 for(const ext of ['.wasm','.data']){
   const name='piper_phonemize'+ext;
