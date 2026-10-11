@@ -38,7 +38,7 @@ function App() {
   const [response, setResponse] = useState('');
   const [notice, setNotice] = useState('');
   const [installing,setInstalling]=useState(false);
-  const [setupMessage,setSetupMessage]=useState('Download a small local astronomy AI. Piper's voice is downloaded separately when first used. Wi-Fi is recommended.');
+  const [setupMessage,setSetupMessage]=useState("Download a small local astronomy AI. Piper's voice is downloaded separately when first used. Wi-Fi is recommended.");
   const [setupError,setSetupError]=useState('');
   const recognition = useRef<SpeechRecognitionLike | null>(null);
   const generation = useRef(0);
