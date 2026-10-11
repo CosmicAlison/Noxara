@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 // Piper runs in its own worker so slow neural voice synthesis cannot block Gemma.
 import * as piper from '@mintplex-labs/piper-tts-web';
 const VOICE='en_US-hfc_female-medium';
