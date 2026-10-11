@@ -18,25 +18,38 @@ export async function installEdge(progress:SetupProgress){
   progress('Step 1 of 2 — downloading Kokoro voice. Keep this page open…');
   const {KokoroTTS}=await import('kokoro-js');
   tts=await KokoroTTS.from_pretrained(KOKORO,{device:'wasm',dtype:'q8',progress_callback:(event:any)=>reportDownload(progress,'Kokoro',event)});
-  progress('Kokoro installed. Step 2 of 2 — preparing Gemma…');
+  progress('Kokoro downloaded. Testing local voice synthesis…');
+  try {
+    const probe=await tts.generate('Ready.',{voice:'af_heart'});
+    if(!probe.toBlob().size)throw new Error('Kokoro generated empty audio.');
+  } catch(e) { tts=null; throw new Error('Kokoro voice test failed: '+String(e)); }
+  progress('Kokoro voice test passed. Step 2 of 2 — preparing Gemma…');
   const gpuAvailable=await hasWebGPU();
-  const backend=gpuAvailable?'webgpu':'wasm';
-  const precision=gpuAvailable?'q4f16':'fp32';
-  progress('Gemma: using '+(gpuAvailable?'WebGPU':'CPU / WebAssembly')+' ('+precision+'). Downloading model files…');
-  try{
-    const {pipeline}=await import('@huggingface/transformers');
-    generator=await pipeline('text-generation',GEMMA,{
-      device:backend,dtype:precision,
-      progress_callback:(event:any)=>reportDownload(progress,'Gemma',event)
-    });
-    progress('Gemma downloaded. Testing local '+(gpuAvailable?'GPU':'CPU')+' inference…');
-    const test=await generator([{role:'user',content:'Say ready.'}],{max_new_tokens:4,do_sample:false});
-    if(!test?.length)throw new Error('Gemma returned no test output.');
-    progress('Kokoro and Gemma both ready. Entering Noxara…');
-  }catch(error){
-    generator=null;
-    throw new Error('Gemma '+backend+' setup failed: '+String(error)+'. Kokoro is cached; retry setup or use a more capable device.');
+  const {pipeline}=await import('@huggingface/transformers');
+  const attempts: Array<{device:'webgpu'|'wasm';dtype:'q4f16'|'fp32'}> = gpuAvailable
+    ? [{device:'webgpu',dtype:'q4f16'},{device:'wasm',dtype:'fp32'}]
+    : [{device:'wasm',dtype:'fp32'}];
+  const failures:string[]=[];
+  for(const {device,dtype} of attempts){
+    try{
+      generator=null;
+      progress('Gemma: loading '+device+' ('+dtype+'). Keep this page open…');
+      const candidate=await pipeline('text-generation',GEMMA,{
+        device,dtype,progress_callback:(event:any)=>reportDownload(progress,'Gemma',event)
+      });
+      progress('Gemma loaded. Testing '+device+' inference…');
+      const test=await candidate([{role:'user',content:'Say ready.'}],{max_new_tokens:4,do_sample:false});
+      if(!test?.length)throw new Error('Gemma returned no test output.');
+      generator=candidate;
+      progress('Kokoro and Gemma both passed inference tests. Entering Noxara…');
+      return;
+    }catch(e){
+      failures.push(device+': '+String(e));
+      progress('Gemma '+device+' failed; '+(device==='webgpu'?'retrying on CPU / WebAssembly…':'setup could not complete.'));
+    }
   }
+  generator=null;
+  throw new Error('Gemma initialization failed. '+failures.join(' | '));
 }
 export function isEdgeReady(){return Boolean(tts&&generator);}
 export function stopEdgeSpeech(){if(audio){audio.pause();audio.src='';audio=null;}if(audioUrl){URL.revokeObjectURL(audioUrl);audioUrl=null;}}

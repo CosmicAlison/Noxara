@@ -1,4 +1,5 @@
 import { horizontalCoordinates, angularDistance, stars } from './astronomy';
+import { describeStar } from './star-facts';
 
 export type YaleStar = {
   name:string; type:string; color:string; ra:number; dec:number; magnitude:number;
@@ -36,12 +37,13 @@ export function yaleVisible(latitude:number,longitude:number,at=new Date(),limit
     const {altitude,azimuth}=horizontalCoordinates(ra,dec,latitude,longitude,at);
     if(altitude<=5)continue;
     const known=knownStar(ra,dec);
+    const enriched=describeStar(id,magnitude);
     visible.push({
-      name:known?.name??'HR '+id,
-      type:known?.type??'Yale Bright Star Catalogue',
+      name:enriched.name!=='HR '+id?enriched.name:(known?.name??enriched.name),
+      type:enriched.type!=='Yale Bright Star Catalogue'?enriched.type:(known?.type??enriched.type),
       color:known?.color??'#dceaff',
       ra,dec,magnitude,altitude,azimuth,
-      story:known?.story??('This is star HR '+id+' in the Yale Bright Star Catalogue. Its apparent visual magnitude is '+magnitude.toFixed(2)+'.')
+      story:enriched.story
     });
   }
   return visible.sort((a,b)=>a.magnitude-b.magnitude);

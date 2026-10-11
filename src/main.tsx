@@ -6,6 +6,7 @@ import {installEdge,isEdgeReady,speakEdge,stopEdgeSpeech,askGemma,supportsEdge} 
 import {identifyStar,type VisibleStar} from './astronomy';
 import {identifySolarObject,type SolarObject} from './ephemeris';
 import {loadYaleCatalog,identifyYale,type YaleStar} from './yale';
+import {loadStarFacts} from './star-facts';
 
 type Screen = 'welcome' | 'setup' | 'point' | 'discovery' | 'listen';
 type CelestialObject = { name: string; type: string; color: string; story: string };
@@ -28,6 +29,8 @@ function App() {
   const [sensorPermission,setSensorPermission]=useState<'unknown'|'granted'|'denied'>('unknown');
   const [catalogCount,setCatalogCount]=useState(0);
   const [catalogError,setCatalogError]=useState('');
+  const [factsCount,setFactsCount]=useState(0);
+  const [factsError,setFactsError]=useState('');
   const [speaking, setSpeaking] = useState(false);
   const [voiceStatus,setVoiceStatus]=useState('');
   const [muted, setMuted] = useState(false);
@@ -40,7 +43,7 @@ function App() {
   const recognition = useRef<SpeechRecognitionLike | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const obj = star || objects[index];
-  useEffect(()=>{loadYaleCatalog().then(setCatalogCount).catch(e=>setCatalogError(String(e instanceof Error?e.message:e)));},[]);
+  useEffect(()=>{loadYaleCatalog().then(setCatalogCount).catch(e=>setCatalogError(String(e instanceof Error?e.message:e)));loadStarFacts().then(setFactsCount).catch(e=>setFactsError(String(e instanceof Error?e.message:e)));},[]);
   useEffect(()=>{if(screen!=='point')return;navigator.geolocation?.getCurrentPosition(p=>setPosition({latitude:p.coords.latitude,longitude:p.coords.longitude}),()=>setSkyError('Enable location access to identify stars.'),{enableHighAccuracy:true,timeout:12000});},[screen]);
   useEffect(()=>{if(screen!=='point')return;const handler=(event:Event)=>{const e=event as DeviceOrientationEvent & {webkitCompassHeading?:number};if(typeof e.webkitCompassHeading==='number')setHeading(e.webkitCompassHeading);else if(e.absolute&&typeof e.alpha==='number')setHeading((360-e.alpha)%360);if(typeof e.beta==='number')setTilt(Math.max(0,Math.min(90,e.beta)));};window.addEventListener('deviceorientationabsolute',handler);window.addEventListener('deviceorientation',handler);return()=>{window.removeEventListener('deviceorientationabsolute',handler);window.removeEventListener('deviceorientation',handler);};},[screen]);
   async function enableSensors(){const ctor=window.DeviceOrientationEvent as typeof DeviceOrientationEvent & {requestPermission?:()=>Promise<string>};if(!ctor){setSkyError('Motion sensors are not available in this browser.');return;}if(ctor.requestPermission){try{const permission=await ctor.requestPermission();setSensorPermission(permission==='granted'?'granted':'denied');setSkyError(permission==='granted'?'':'Motion access was denied. Enable motion access in your browser settings.');}catch{setSensorPermission('denied');setSkyError('Could not enable motion sensors.');}}else{setSensorPermission('granted');setSkyError('');}}
@@ -89,7 +92,8 @@ function App() {
       <p className="hint">Hold steady, then tap Done.</p>
       <p className="hint" role="status">{position?"Location ready":"Location pending"} · {heading===null?"Compass pending":Math.round(heading)+"° heading"} · {tilt===null?"Tilt pending":Math.round(tilt)+"° tilt"}</p>
       {sensorPermission!=='granted'&&<button className="secondary" onClick={enableSensors}>Enable motion sensors</button>}
-      <p className="hint">{catalogCount===9110?"Yale catalogue ready · 9,110 records":"Bright-star fallback active"}</p>
+      <p className="hint">{catalogCount===9110?"Yale catalogue ready · 9,110 records":"Bright-star fallback active"} · {factsCount===9110?'Star facts ready':'Star facts loading or unavailable'}</p>
+      {factsError&&<p className="notice" role="status">{factsError}</p>}
       {catalogError&&<p className="notice" role="status">{catalogError}</p>}
       {skyError&&<p className="notice" role="status">{skyError}</p>}
       <button className="primary" onClick={discover}>Done <Check size={20}/></button>
