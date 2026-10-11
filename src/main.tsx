@@ -1,11 +1,10 @@
 import {getStarFacts,type StarFacts} from './star-facts';
-import {comparison,type VoiceEngine,type VoiceMeasurement} from './tts-benchmark';
 import {starDisplayName,catalogueSummary} from './star-display';
 import { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ArrowLeft, ArrowRight, AudioLines, Check, Compass, Mic, RotateCcw, Volume2, VolumeX } from 'lucide-react';
 import './style.css';
-import {installEdge,isEdgeReady,speakNarration,stopEdgeSpeech,askGemma,supportsEdge,prepareNarration,cancelEdgeGeneration,benchmarkVoices} from './edge';
+import {installEdge,isEdgeReady,speakNarration,stopEdgeSpeech,askGemma,supportsEdge,prepareNarration,cancelEdgeGeneration} from './edge';
 import {identifyStar,type VisibleStar} from './astronomy';
 import {identifySolarObject,type SolarObject} from './ephemeris';
 import {loadYaleCatalog,identifyYale,type YaleStar} from './yale';
@@ -47,10 +46,6 @@ function App() {
   const [loadingMessage,setLoadingMessage]=useState('Writing your story…');
   const [loadingSeconds,setLoadingSeconds]=useState(0);
   const [voiceLoading,setVoiceLoading]=useState(false);
-  const [voiceEngine,setVoiceEngine]=useState<VoiceEngine>('piper');
-  const [benchmarkBusy,setBenchmarkBusy]=useState(false);
-  const [benchmarkStatus,setBenchmarkStatus]=useState('');
-  const [benchmarkResult,setBenchmarkResult]=useState<{piper:VoiceMeasurement;kokoro:VoiceMeasurement}|null>(null);
   const obj = star || objects[index];
   const displayName=starDisplayName(obj,displayFacts);
   useEffect(()=>{loadYaleCatalog().then(setCatalogCount).catch(e=>setCatalogError(String(e instanceof Error?e.message:e)));},[]);
@@ -78,7 +73,7 @@ function App() {
       let voiceReady=false;
       if(!muted){
         progress('Preparing narration…');setLoadingSeconds(0);
-        try{await prepareNarration(story,voiceEngine,progress);voiceReady=true;}
+        try{await prepareNarration(story,progress);voiceReady=true;}
         catch(error){if(request===generation.current)setNotice('Your story is ready, but audio failed: '+String(error));}
       }
       if(request!==generation.current)return;
@@ -114,24 +109,11 @@ function App() {
     try{
       if(!isEdgeReady())await installEdge(()=>{});
       if(request!==speechRequest.current)return;
-      await prepareNarration(text,voiceEngine);
+      await prepareNarration(text);
       if(request!==speechRequest.current)return;
       setVoiceLoading(false);setSpeaking(true);
-      await speakNarration(text,voiceEngine,()=>{if(request===speechRequest.current)setSpeaking(false);});
+      await speakNarration(text,()=>{if(request===speechRequest.current)setSpeaking(false);});
     }catch(error){if(request===speechRequest.current){setVoiceLoading(false);setSpeaking(false);setNotice(error instanceof Error?error.message:String(error));}}
-  }
-  async function runVoiceBenchmark(){
-    if(benchmarkBusy||voiceLoading)return;
-    stopAudio();setBenchmarkBusy(true);setBenchmarkResult(null);setBenchmarkStatus('Preparing benchmark…');
-    try{
-      const results=await benchmarkVoices(setBenchmarkStatus);
-      setBenchmarkResult(results);setBenchmarkStatus('Benchmark complete. Lower is better.');
-    }catch(error){setBenchmarkStatus('Benchmark failed: '+String(error));}
-    finally{setBenchmarkBusy(false);}
-  }
-  function chooseVoice(engine:VoiceEngine){
-    if(benchmarkBusy)return;
-    stopAudio();setVoiceEngine(engine);setBenchmarkResult(null);setNotice('');
   }
   function discover(){if(!position||heading===null||tilt===null){setSkyError('Waiting for location and orientation. Allow permissions, then point your phone at the sky and try again.');return;}const starMatch=catalogCount===9110?identifyYale(position.latitude,position.longitude,heading,tilt):identifyStar(position.latitude,position.longitude,heading,tilt);
     const solarMatch=identifySolarObject(position.latitude,position.longitude,heading,tilt);
@@ -163,7 +145,7 @@ function App() {
       <button className="primary" onClick={() => setScreen('setup')}>Begin exploring <ArrowRight size={20}/></button>
       <small>No account. No distractions. Just the sky.</small>
     </section>}
-    {screen === 'setup' && <section className="screen setup"><span className="eyebrow">PREPARE YOUR UNIVERSE</span><h1>Make the cosmos <em>yours.</em></h1><p>Noxara installs Gemma for local astronomy stories. Piper is the default narration engine and downloads its voice on first use. Kokoro remains an optional comparison voice. Gemma must initialize successfully before you can enter the sky experience. Installation requires an internet connection. Gemma uses WebGPU where available or attempts CPU / WebAssembly otherwise; CPU setup may be slow and memory-intensive. Gemma must pass initialization before entering. Afterwards, cached models can run locally.</p><div className="narration"><div className="narration-heading"><AudioLines size={20}/> Your private, on-device guide</div><p role="status">{setupMessage}</p>{installing&&<progress className="setup-progress"/>}{setupError&&<p className="notice" role="alert">{setupError}</p>}</div><button className="primary" disabled={installing||!supportsEdge()} onClick={beginSetup}>{installing?'Installing resources…':'Install Gemma guide'} <ArrowRight size={19}/></button>{!supportsEdge()&&<p className="notice">This browser cannot run the local guide. Try an updated browser.</p>}<small>Downloads are cached by your browser and may need repeating if site data is cleared.</small></section>}
+    {screen === 'setup' && <section className="screen setup"><span className="eyebrow">PREPARE YOUR UNIVERSE</span><h1>Make the cosmos <em>yours.</em></h1><p>Noxara installs Gemma for local astronomy stories. Piper downloads its offline voice on first use. Gemma must initialize successfully before you can enter the sky experience. Installation requires an internet connection. Gemma uses WebGPU where available or attempts CPU / WebAssembly otherwise; CPU setup may be slow and memory-intensive. Gemma must pass initialization before entering. Afterwards, cached models can run locally.</p><div className="narration"><div className="narration-heading"><AudioLines size={20}/> Your private, on-device guide</div><p role="status">{setupMessage}</p>{installing&&<progress className="setup-progress"/>}{setupError&&<p className="notice" role="alert">{setupError}</p>}</div><button className="primary" disabled={installing||!supportsEdge()} onClick={beginSetup}>{installing?'Installing resources…':'Install Gemma guide'} <ArrowRight size={19}/></button>{!supportsEdge()&&<p className="notice">This browser cannot run the local guide. Try an updated browser.</p>}<small>Downloads are cached by your browser and may need repeating if site data is cleared.</small></section>}
     {screen === 'point' && <section className="screen point">
       <span className="eyebrow">01 / LOOK UP</span><h1>Find something <em>wonderful.</em></h1>
       <p>Point the top of your phone toward the sky.</p>
@@ -192,17 +174,6 @@ function App() {
         </div>
         <div className="narrative-text" tabIndex={0} role="region" aria-label="Narrative"><p>{response}</p>{displayFacts?.funFact&&<p className="catalogue-fact">{displayFacts.funFact.text} <a href={displayFacts.funFact.sourceUrls[0]} target="_blank" rel="noreferrer">Source</a></p>}</div>
         {notice&&<p className="notice" role="status">{notice}</p>}
-        <div className="voice-options" aria-label="Offline voice engine">
-          <label htmlFor="voice-engine">Narration voice</label>
-          <select id="voice-engine" value={voiceEngine} disabled={voiceLoading||benchmarkBusy} onChange={e=>chooseVoice(e.target.value as VoiceEngine)}>
-            <option value="piper">Piper — faster offline voice</option>
-            <option value="kokoro">Kokoro — expressive, slower</option>
-          </select>
-          <small>Piper saves its voice model for local inference. An initial download is required; full airplane-mode operation depends on cached runtime assets. Voice speed varies by device.</small>
-        </div>
-        <button className="secondary" disabled={benchmarkBusy||voiceLoading||speaking} onClick={()=>void runVoiceBenchmark()}>{benchmarkBusy?'Benchmarking voices…':'Compare Piper vs Kokoro speed'}</button>
-        {benchmarkStatus&&<p className="hint" role="status">{benchmarkStatus}</p>}
-        {benchmarkResult&&<p className="hint">Piper: {Math.round(benchmarkResult.piper.milliseconds)} ms · Kokoro: {Math.round(benchmarkResult.kokoro.milliseconds)} ms. {comparison(benchmarkResult.piper,benchmarkResult.kokoro)} Synthesis only; download and audio playback excluded.</p>}
         <button className="replay" disabled={voiceLoading} onClick={() => narrate(response)}><RotateCcw size={15}/> Hear it again</button>
       </div>
       <div className="actions"><button className="primary" onClick={listen}><Mic size={19}/> Ask a question</button><button className="secondary" onClick={pointElsewhere}><Compass size={19}/> Point elsewhere</button></div>
