@@ -6,7 +6,7 @@ let audio:HTMLAudioElement|null=null;
 let audioUrl:string|null=null;
 let speechVersion=0;
 // Keep only the last narration: replay should not run Kokoro again.
-let cachedVoice:{text:string;blob:Blob}|null=null;
+
 export function supportsEdge(){return typeof WebAssembly!=='undefined'&&typeof Worker!=='undefined';}
 export function isEdgeReady(){return client.ready;}
 export async function installEdge(progress:SetupProgress){
@@ -21,24 +21,69 @@ export function stopEdgeSpeech(){
   if(audioUrl){URL.revokeObjectURL(audioUrl);audioUrl=null;}
 }
 export function cancelEdgeGeneration(){stopEdgeSpeech();client.reset();}
+const MAX_CHUNK_CHARS=100;
+let cachedChunks:{text:string;blobs:Blob[]}|null=null;
+function chunkNarration(text:string):string[]{
+  const sentences=(text.match(/[^.!?]+(?:[.!?]+|$)/g)||[text]).map(x=>x.trim()).filter(Boolean);
+  const chunks:string[]=[];
+  for(const sentence of sentences){
+    let current='';
+    for(const word of sentence.split(/\s+/)){
+      if(current && current.length+word.length+1>MAX_CHUNK_CHARS){chunks.push(current);current='';}
+      current+=(current?' ':'')+word;
+    }
+    if(current)chunks.push(current);
+  }
+  return chunks;
+}
 export async function prepareEdgeSpeech(text:string):Promise<void>{
-  if(cachedVoice?.text===text)return;
-  const blob=await client.request<Blob>('voice',{text},60000);
-  cachedVoice={text,blob};
+  if(cachedChunks?.text===text)return;
+  // Prepare only the first short chunk before playback, not the whole paragraph.
+  const chunks=chunkNarration(text);
+  if(!chunks.length)throw new Error('There is no narration to play.');
+  const first=await client.request<Blob>('voice',{text:chunks[0]},60000);
+  cachedChunks={text,blobs:[first]};
+}
+async function playBlob(blob:Blob,version:number):Promise<void>{
+  if(version!==speechVersion)return;
+  const url=URL.createObjectURL(blob);
+  const player=new Audio(url);audio=player;audioUrl=url;
+  try{
+    await new Promise<void>((resolve,reject)=>{
+      player.onended=()=>resolve();
+      player.onpause=()=>{if(version!==speechVersion)resolve();};
+      player.onerror=()=>reject(new Error('Audio playback failed on this device.'));
+      player.play().catch(reject);
+    });
+  }finally{
+    player.onended=null;player.onpause=null;player.onerror=null;
+    if(audio===player)audio=null;
+    if(audioUrl===url)audioUrl=null;
+    URL.revokeObjectURL(url);
+  }
 }
 export async function speakEdge(text:string,onDone:()=>void){
   stopEdgeSpeech();
   const version=speechVersion;
   await prepareEdgeSpeech(text);
-  if(version!==speechVersion)return; // Mute/navigation must suppress late audio.
-  audioUrl=URL.createObjectURL(cachedVoice!.blob);
-  const player=new Audio(audioUrl);audio=player;
-  player.onended=()=>{if(version===speechVersion){stopEdgeSpeech();onDone();}};
-  player.onerror=()=>{if(version===speechVersion){stopEdgeSpeech();onDone();}};
-  try{await player.play();}catch(error){
+  if(version!==speechVersion)return;
+  const chunks=chunkNarration(text);
+  try{
+    for(let i=0;i<chunks.length;i++){
+      if(version!==speechVersion)return;
+      let blob=cachedChunks!.blobs[i];
+      if(!blob){
+        blob=await client.request<Blob>('voice',{text:chunks[i]},60000);
+        if(version!==speechVersion)return;
+        cachedChunks!.blobs[i]=blob;
+      }
+      await playBlob(blob,version);
+    }
+    if(version===speechVersion)onDone();
+  }catch(error){
     if(version!==speechVersion)return;
-    stopEdgeSpeech();
-    if(error instanceof DOMException&&error.name==='NotAllowedError')throw new Error('Tap Hear it again to play the narration. Your browser blocked automatic playback.');
+    if(error instanceof DOMException&&error.name==='NotAllowedError')
+      throw new Error('Tap Hear it again to play the narration. Your browser blocked automatic playback.');
     throw error;
   }
 }
