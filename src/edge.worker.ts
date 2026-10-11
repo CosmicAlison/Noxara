@@ -5,17 +5,9 @@ function reportDownload(progress:SetupProgress,model:string,event:any){
   else if(event.status==='initiate')progress(model+': fetching '+(event.file||'model resources'));
   else if(event.status==='done')progress(model+': cached '+(event.file||'model resource'));
 }
-const KOKORO='onnx-community/Kokoro-82M-v1.0-ONNX';
 const GEMMA='onnx-community/gemma-3-270m-it-ONNX';
-let tts: any;
 let generator: any;
 async function hasWebGPU(){try{const gpu=(navigator as Navigator & {gpu?:{requestAdapter:()=>Promise<unknown>}}).gpu;return Boolean(gpu && await gpu.requestAdapter());}catch{return false;}}
-async function ensureKokoro(progress:SetupProgress){
-  if(tts)return;
-  progress('Preparing Kokoro comparison voice…');
-  const {KokoroTTS}=await import('kokoro-js');
-  tts=await KokoroTTS.from_pretrained(KOKORO,{device:'wasm',dtype:'q8',progress_callback:(event:any)=>reportDownload(progress,'Kokoro',event)});
-}
 async function installEdge(progress:SetupProgress){
   progress('Preparing local Gemma astronomy guide…');
   const gpuAvailable=await hasWebGPU();
@@ -62,9 +54,6 @@ self.onmessage=async(event:MessageEvent)=>{
       const facts=object.hr===undefined?null:await getStarFacts(object.hr).catch(()=>null);
       progress(question?'Thinking about your question…':'Writing your story…');
       result=readAnswer(await generator([{role:'user',content:gemmaPrompt(object,objectContext(object,facts),question)}],{max_new_tokens:96,do_sample:false}));
-    }else if(task==='voice'){
-      await ensureKokoro(progress);
-      result=(await tts.generate(payload.text,{voice:'af_heart'})).toBlob();
     }else throw new Error('Unknown guide operation.');
     self.postMessage({id,result});
   }catch(error){self.postMessage({id,error:error instanceof Error?error.message:String(error)});}
