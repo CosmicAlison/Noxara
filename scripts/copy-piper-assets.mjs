@@ -4,7 +4,10 @@ import {dirname,join} from 'node:path';
 const require=createRequire(import.meta.url);
 const destination='public/piper-runtime';
 async function packageDir(name){
-  let dir=dirname(require.resolve(name));
+  let entry;
+  try{entry=require.resolve(name+'/package.json');}
+  catch{entry=require.resolve(name==='@diffusionstudio/piper-wasm'?name+'/build/piper_phonemize.wasm':name);}
+  let dir=dirname(entry);
   for(let depth=0;depth<8;depth++,dir=dirname(dir)){
     try{const pkg=JSON.parse(await readFile(join(dir,'package.json'),'utf8'));if(pkg.name===name)return dir;}catch{}
   }
