@@ -4,8 +4,8 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --host 0.0.0.0",
-    "build": "tsc --noEmit && vite build",
+    "dev": "node scripts/copy-piper-assets.mjs && vite --host 0.0.0.0",
+    "build": "node scripts/copy-piper-assets.mjs && tsc --noEmit && vite build",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -15,7 +15,9 @@
     "astronomy-engine": "^2.1.19",
     "kokoro-js": "^1.2.1",
     "@huggingface/transformers": "^4.0.0",
-    "@mintplex-labs/piper-tts-web": "^1.0.5"
+    "@mintplex-labs/piper-tts-web": "^1.0.5",
+    "@diffusionstudio/piper-wasm": "1.0.0",
+    "onnxruntime-web": "1.18.0"
   },
   "devDependencies": {
     "@types/react": "^18.3.18",
