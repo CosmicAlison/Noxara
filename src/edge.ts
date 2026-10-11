@@ -120,6 +120,8 @@ export async function benchmarkVoices(progress?:(message:string)=>void):Promise<
   const piperStart=performance.now();
   await synthesizePiper(BENCHMARK_TEXT);
   const piper=measurement('piper',performance.now()-piperStart,BENCHMARK_TEXT.length);
+  progress?.('Warming up Kokoro (download and initialization excluded)…');
+  await client.request<Blob>('voice',{text:'Ready.'},180000,progress);
   progress?.('Measuring Kokoro synthesis…');
   const kokoroStart=performance.now();
   await client.request<Blob>('voice',{text:BENCHMARK_TEXT},120000);
