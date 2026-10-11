@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ArrowLeft, ArrowRight, AudioLines, Check, Compass, Mic, RotateCcw, Volume2, VolumeX } from 'lucide-react';
 import './style.css';
-import {installEdge,isEdgeReady,isGuideReady,speakNarration,stopEdgeSpeech,askGemma,supportsEdge,prepareNarration,cancelEdgeGeneration} from './edge';
+import {installEdge,isGuideReady,speakNarration,stopEdgeSpeech,askGemma,supportsEdge,prepareNarration,cancelEdgeGeneration} from './edge';
 import {identifyStar,type VisibleStar} from './astronomy';
 import {identifySolarObject,type SolarObject} from './ephemeris';
 import {loadYaleCatalog,identifyYale,type YaleStar} from './yale';
@@ -66,7 +66,7 @@ function App() {
       const facts='hr' in selected?await getStarFacts(selected.hr).catch(()=>null):null;
       if(request!==generation.current)return;
       setDisplayFacts(facts);fallback=catalogueSummary(selected,facts);
-      if(!isEdgeReady())await installEdge(progress);
+      if(!isGuideReady())await installEdge(progress);
       if(request!==generation.current)return;
       const story=await askGemma({...selected,name:starDisplayName(selected,facts)},q,progress);
       if(request!==generation.current)return;
@@ -107,7 +107,7 @@ function App() {
     const request=++speechRequest.current;
     setVoiceLoading(true);setNotice('');
     try{
-      if(!isEdgeReady())await installEdge(()=>{});
+      if(!isGuideReady())await installEdge(()=>{});
       if(request!==speechRequest.current)return;
       await prepareNarration(text);
       if(request!==speechRequest.current)return;
